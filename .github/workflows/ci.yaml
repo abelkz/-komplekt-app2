@@ -31,9 +31,11 @@ jobs:
         run: |
           F=android/app/build.gradle.kts
           sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' "$F"
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$F"
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$F"
+          sed -i -E '/^[[:space:]]*compileSdk[[:space:]]*=/ s/=.*/= 36/' "$F"
+          sed -i -E '/^[[:space:]]*minSdk[[:space:]]*=/ s/=.*/= 23/' "$F"
           printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> "$F"
+          echo "===== build.gradle.kts after patch ====="
+          cat "$F"
 
       - name: Install dependencies
         run: flutter pub get
