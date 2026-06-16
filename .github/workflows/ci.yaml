@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
-  workflow_dispatch: # позволяет запускать сборку вручную из вкладки Actions
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,18 +21,21 @@ jobs:
         with:
           channel: stable
 
-      # .env нужен для сборки (объявлен как asset). В CI — демо-вариант.
       - name: Prepare .env (demo)
         run: cp .env.example .env
 
-      # Генерируем платформенные папки (android/ и пр.), которых нет в репозитории
       - name: Generate platform folders
         run: flutter create . --platforms=android
+
+      - name: Enable core library desugaring
+        run: |
+          F=android/app/build.gradle.kts
+          sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' "$F"
+          printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> "$F"
 
       - name: Install dependencies
         run: flutter pub get
 
-      # Анализ и тесты не блокируют сборку APK (для информации)
       - name: Analyze
         run: flutter analyze
         continue-on-error: true
@@ -41,7 +44,6 @@ jobs:
         run: flutter test
         continue-on-error: true
 
-      # Главное: устанавливаемый debug-APK (подписан debug-ключом)
       - name: Build debug APK
         run: flutter build apk --debug
 
