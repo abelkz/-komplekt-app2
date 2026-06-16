@@ -35,7 +35,7 @@ jobs:
           sed -i -E '/^[[:space:]]*minSdk[[:space:]]*=/ s/=.*/= 23/' "$F"
           printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> "$F"
           G=android/build.gradle.kts
-          printf '\ngradle.projectsEvaluated {\n    subprojects {\n        val a = extensions.findByName("android")\n        if (a is com.android.build.gradle.BaseExtension) { a.compileSdkVersion(36) }\n    }\n}\n' >> "$G"
+          { printf 'subprojects {\n    afterEvaluate {\n        val a = extensions.findByName("android")\n        if (a is com.android.build.gradle.BaseExtension) { a.compileSdkVersion(36) }\n    }\n}\n\n'; cat "$G"; } > "$G.tmp" && mv "$G.tmp" "$G"
 
       - name: Install dependencies
         run: flutter pub get
