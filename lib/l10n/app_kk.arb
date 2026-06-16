@@ -1,0 +1,22 @@
+{
+  "@@locale": "kk",
+  "appTitle": "КОМПЛЕКТ",
+  "navSearch": "Іздеу",
+  "navFavorites": "Таңдаулылар",
+  "navCollections": "Жинақтар",
+  "navProfile": "Профиль",
+  "searchHint": "Атауы немесе артикул…",
+  "searchAction": "Табу",
+  "categories": "Санаттар",
+  "inspirationFeed": "Шабыт таспасы",
+  "suppliersOnMap": "Картадағы жеткізушілер",
+  "showMore": "Тағы көрсету",
+  "priceComparison": "Бағаларды салыстыру",
+  "bestPrice": "ең тиімді баға",
+  "inStock": "қоймада бар",
+  "onOrder": "тапсырыспен",
+  "addToCollection": "Жоба жинағына қосу",
+  "favoritesEmptyTitle": "Әзірге бос",
+  "notificationsTitle": "Баға туралы хабарламалар",
+  "priceDropTitle": "Баға төмендеді"
+}

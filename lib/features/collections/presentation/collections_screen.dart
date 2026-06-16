@@ -1,0 +1,367 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/async_value_view.dart';
+import '../../catalog/presentation/widgets/product_thumb.dart';
+import '../data/spec_export.dart';
+import '../domain/collection.dart';
+import 'collections_providers.dart';
+
+/// Экран 7 — Подборки/проекты: позиции, количество, итог, экспорт.
+class CollectionsScreen extends ConsumerWidget {
+  const CollectionsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final collections = ref.watch(collectionsProvider);
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+              child: Row(
+                children: [
+                  Text('Подборки', style: AppTypography.unbounded()),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.add_rounded),
+                    onPressed: () => _createDialog(context, ref),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: AsyncValueView<List<Collection>>(
+                value: collections,
+                onRetry: () => ref.invalidate(collectionsProvider),
+                isEmpty: (d) => d.isEmpty || d.every((c) => c.items.isEmpty),
+                empty: const EmptyState(
+                  title: 'Подборка пуста',
+                  subtitle: 'Найдите товар и добавьте его в подборку.',
+                  icon: Icons.layers_outlined,
+                ),
+                data: (list) => ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    for (final col in list.where((c) => c.items.isNotEmpty))
+                      _CollectionBlock(collection: col),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _createDialog(BuildContext context, WidgetRef ref) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Новая подборка'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Например: Кафе · Атырау'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена')),
+          FilledButton(
+            onPressed: () {
+              final name = ctrl.text.trim();
+              if (name.isNotEmpty) {
+                ref.read(collectionsProvider.notifier).create(name);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Создать'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollectionBlock extends ConsumerWidget {
+  const _CollectionBlock({required this.collection});
+  final Collection collection;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(collection.name,
+                  style: AppTypography.unbounded(size: 18)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                  color: c.orangeSoft,
+                  borderRadius: BorderRadius.circular(999)),
+              child: Text('${collection.items.length} поз.',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: c.orange)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        for (final item in collection.items)
+          _ItemRow(collectionId: collection.id, item: item),
+        const SizedBox(height: 8),
+        // Итог
+        Container(
+          padding: const EdgeInsets.all(17),
+          decoration: BoxDecoration(
+              color: c.ink, borderRadius: BorderRadius.circular(AppRadii.md)),
+          child: Row(
+            children: [
+              Text('Итого по подборке',
+                  style: TextStyle(
+                      fontSize: 13, color: c.paper.withOpacity(0.7))),
+              const Spacer(),
+              Text(Formatters.price(collection.total),
+                  style: AppTypography.unbounded(size: 19, color: c.paper)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _ExportButton(
+                icon: Icons.content_copy,
+                label: 'Скопировать',
+                onTap: () => _copySpec(context, collection),
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: _ExportButton(
+                icon: Icons.grid_on,
+                label: 'Excel',
+                onTap: () => _export(context, () => SpecExport.exportExcel(collection)),
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: _ExportButton(
+                icon: Icons.picture_as_pdf_outlined,
+                label: 'PDF',
+                onTap: () => _export(context, () => SpecExport.exportPdf(collection)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  void _copySpec(BuildContext context, Collection col) {
+    final lines = col.items.map((i) {
+      final p = i.product;
+      final best = p?.bestOffer;
+      final name = p?.name ?? '';
+      final sum = (best?.price ?? 0) * i.qty;
+      return '· $name — ${Formatters.number(i.qty)} ${p?.unit ?? ''} × '
+          '${Formatters.price(best?.price ?? 0)} = ${Formatters.price(sum)}';
+    }).join('\n');
+    final text = 'Спецификация «${col.name}»\n\n$lines\n\n'
+        'Итого: ${Formatters.price(col.total)}';
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Спецификация скопирована')));
+  }
+
+  Future<void> _export(
+      BuildContext context, Future<void> Function() action) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+        const SnackBar(content: Text('Готовлю файл…')));
+    try {
+      await action();
+    } catch (e) {
+      final msg = e.toString().startsWith('Failure: ')
+          ? e.toString().substring(9)
+          : 'Не удалось сформировать файл';
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+}
+
+class _ItemRow extends ConsumerWidget {
+  const _ItemRow({required this.collectionId, required this.item});
+  final String collectionId;
+  final CollectionItem item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final p = item.product;
+    if (p == null) return const SizedBox.shrink();
+    final best = p.bestOffer;
+    final notifier = ref.read(collectionsProvider.notifier);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 11),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border.all(color: c.line),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => context.push(Routes.product(p.id)),
+            child: Row(
+              children: [
+                ProductThumb(product: p, size: 46),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(p.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${best?.supplierName ?? ''} · ${Formatters.price(best?.price ?? 0)}/${p.unit}',
+                        style: TextStyle(fontSize: 11, color: c.faint),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _Stepper(
+                qty: item.qty,
+                unit: p.unit,
+                onMinus: () => notifier.setQty(
+                    collectionId, p.id, item.qty - 1),
+                onPlus: () => notifier.setQty(
+                    collectionId, p.id, item.qty + 1),
+              ),
+              const Spacer(),
+              Text(Formatters.price(item.sum),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stepper extends StatelessWidget {
+  const _Stepper({
+    required this.qty,
+    required this.unit,
+    required this.onMinus,
+    required this.onPlus,
+  });
+  final double qty;
+  final String unit;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+          color: c.field, borderRadius: BorderRadius.circular(AppRadii.sm)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _btn(c, Icons.remove, onMinus),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text('${Formatters.number(qty)} $unit',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+          _btn(c, Icons.add, onPlus),
+        ],
+      ),
+    );
+  }
+
+  Widget _btn(AppColors c, IconData icon, VoidCallback onTap) => InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+              color: c.card, borderRadius: BorderRadius.circular(9)),
+          child: Icon(icon, size: 16, color: c.ink),
+        ),
+      );
+}
+
+class _ExportButton extends StatelessWidget {
+  const _ExportButton(
+      {required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: c.card,
+          border: Border.all(color: c.line),
+          borderRadius: BorderRadius.circular(AppRadii.md),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: c.orange, size: 20),
+            const SizedBox(height: 6),
+            Text(label,
+                style:
+                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    );
+  }
+}

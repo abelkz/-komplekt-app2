@@ -1,0 +1,53 @@
+name: CI & Build APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch: # позволяет запускать сборку вручную из вкладки Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # .env нужен для сборки (объявлен как asset). В CI — демо-вариант.
+      - name: Prepare .env (demo)
+        run: cp .env.example .env
+
+      # Генерируем платформенные папки (android/ и пр.), которых нет в репозитории
+      - name: Generate platform folders
+        run: flutter create . --platforms=android
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Анализ и тесты не блокируют сборку APK (для информации)
+      - name: Analyze
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Run tests
+        run: flutter test
+        continue-on-error: true
+
+      # Главное: устанавливаемый debug-APK (подписан debug-ключом)
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: komplekt-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

@@ -1,0 +1,22 @@
+{
+  "@@locale": "en",
+  "appTitle": "KOMPLEKT",
+  "navSearch": "Search",
+  "navFavorites": "Favorites",
+  "navCollections": "Collections",
+  "navProfile": "Profile",
+  "searchHint": "Name or SKU…",
+  "searchAction": "Find",
+  "categories": "Categories",
+  "inspirationFeed": "Inspiration feed",
+  "suppliersOnMap": "Suppliers on the map",
+  "showMore": "Show more",
+  "priceComparison": "Price comparison",
+  "bestPrice": "best price",
+  "inStock": "in stock",
+  "onOrder": "on order",
+  "addToCollection": "Add to project collection",
+  "favoritesEmptyTitle": "Empty for now",
+  "notificationsTitle": "Price alerts",
+  "priceDropTitle": "Price dropped"
+}

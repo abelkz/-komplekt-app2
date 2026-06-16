@@ -1,0 +1,22 @@
+{
+  "@@locale": "ru",
+  "appTitle": "КОМПЛЕКТ",
+  "navSearch": "Поиск",
+  "navFavorites": "Избранное",
+  "navCollections": "Подборки",
+  "navProfile": "Профиль",
+  "searchHint": "Название или артикул…",
+  "searchAction": "Найти",
+  "categories": "Категории",
+  "inspirationFeed": "Лента вдохновения",
+  "suppliersOnMap": "Поставщики на карте",
+  "showMore": "Показать ещё",
+  "priceComparison": "Сравнение цен",
+  "bestPrice": "лучшая цена",
+  "inStock": "в наличии",
+  "onOrder": "под заказ",
+  "addToCollection": "Добавить в подборку проекта",
+  "favoritesEmptyTitle": "Пока пусто",
+  "notificationsTitle": "Уведомления о ценах",
+  "priceDropTitle": "Цена снизилась"
+}
