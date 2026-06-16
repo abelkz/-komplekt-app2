@@ -14,7 +14,6 @@ dependencies:
   # ── Локализация (русский + задел под казахский) ──
   flutter_localizations:
     sdk: flutter
-  intl: ^0.19.0
 
   # ── State management ──
   flutter_riverpod: ^2.5.1
