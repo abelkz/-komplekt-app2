@@ -72,17 +72,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             Row(
                               children: [
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text('КОМПЛЕКТ',
-                                          style: AppTypography.unbounded()),
-                                      const SizedBox(height: 3),
-                                      Text('цены поставщиков',
-                                          style: TextStyle(
-                                              fontSize: 12, color: c.gray)),
-                                    ],
+                                  child: Text(
+                                    'КОМПЛЕКТ / SPEC',
+                                    style: AppTypography.mono(color: c.gray),
                                   ),
                                 ),
                                 Badge.count(
@@ -111,7 +103,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 22),
+                            // Крупный заголовок: «здесь» подсвечено жёлтым
+                            // маркером — как отметка в бумажной спецификации.
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  const TextSpan(text: 'Сегодня\nдешевле '),
+                                  TextSpan(
+                                    text: 'здесь',
+                                    style: TextStyle(
+                                      color: AppColors.brandInk,
+                                      background: Paint()
+                                        ..color = AppColors.brandYellow,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              style:
+                                  AppTypography.unbounded(size: 30, color: c.ink),
+                            ),
+                            const SizedBox(height: 18),
                             _SearchBar(
                               controller: _search,
                               onSubmit: _doSearch,

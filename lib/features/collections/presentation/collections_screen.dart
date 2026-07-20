@@ -130,18 +130,22 @@ class _CollectionBlock extends ConsumerWidget {
           _ItemRow(collectionId: collection.id, item: item),
         const SizedBox(height: 8),
         // Итог
+        // Итог документа: жирная линейка, моно-подпись и крупная сумма
         Container(
-          padding: const EdgeInsets.all(17),
+          padding: const EdgeInsets.only(top: 18, bottom: 4),
           decoration: BoxDecoration(
-              color: c.ink, borderRadius: BorderRadius.circular(AppRadii.md)),
+            border: Border(top: BorderSide(color: c.ink, width: 1.5)),
+          ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('Итого по подборке',
-                  style: TextStyle(
-                      fontSize: 13, color: c.paper.withOpacity(0.7))),
-              const Spacer(),
+              Expanded(
+                child: Text('ИТОГО ПО ЛУЧШИМ ЦЕНАМ',
+                    style: AppTypography.sectionLabel(color: c.gray)),
+              ),
+              const SizedBox(width: 10),
               Text(Formatters.price(collection.total),
-                  style: AppTypography.unbounded(size: 19, color: c.paper)),
+                  style: AppTypography.unbounded(size: 26, color: c.ink)),
             ],
           ),
         ),
