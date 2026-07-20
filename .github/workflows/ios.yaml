@@ -21,8 +21,23 @@ jobs:
         with:
           channel: stable
 
-      - name: Prepare .env (demo)
-        run: cp .env.example .env
+      - name: Prepare .env
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            {
+              echo "SUPABASE_URL=$SUPABASE_URL"
+              echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+              echo "DEMO_MODE=false"
+              echo "DEFAULT_CITY=Астана"
+              echo "DEFAULT_LAT=51.1280"
+              echo "DEFAULT_LNG=71.4304"
+            } > .env
+          else
+            cp .env.example .env
+          fi
 
       - name: Generate iOS platform folder
         # Папка ios/ в репозитории не хранится — генерируем так же,

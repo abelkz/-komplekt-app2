@@ -29,8 +29,28 @@ jobs:
         with:
           channel: stable
 
-      - name: Prepare .env (demo)
-        run: cp .env.example .env
+      - name: Prepare .env
+        # Если в Secrets репозитория заданы ключи Supabase — собираем .env
+        # с реальной базой. Если нет — остаёмся в демо-режиме, чтобы сборка
+        # никогда не падала из-за отсутствия секретов.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            {
+              echo "SUPABASE_URL=$SUPABASE_URL"
+              echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+              echo "DEMO_MODE=false"
+              echo "DEFAULT_CITY=Астана"
+              echo "DEFAULT_LAT=51.1280"
+              echo "DEFAULT_LNG=71.4304"
+            } > .env
+            echo "→ собран .env с реальной базой"
+          else
+            cp .env.example .env
+            echo "→ секреты не заданы, демо-режим"
+          fi
 
       - name: Generate web platform folder
         # web/ в репозитории не хранится — генерируем, как android/ и ios/
