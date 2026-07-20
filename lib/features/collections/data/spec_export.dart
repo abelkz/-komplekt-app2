@@ -1,5 +1,8 @@
-import 'dart:io';
+// universal_io вместо dart:io: на мобильных это тот же dart:io,
+// но код компилируется и для веба (там файловые операции не используются).
 import 'dart:ui' show Rect;
+
+import 'package:universal_io/io.dart';
 
 import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';

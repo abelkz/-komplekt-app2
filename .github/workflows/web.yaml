@@ -1,0 +1,60 @@
+name: Build Web (превью интерфейса)
+
+# Собирает приложение как сайт и публикует на GitHub Pages.
+# Нужно, чтобы посмотреть интерфейс на iPhone/любом телефоне без Mac,
+# Apple Developer и установки чего-либо. Запускается в демо-режиме
+# (DEMO_MODE=true из .env.example) — на встроенных данных, без Supabase.
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Prepare .env (demo)
+        run: cp .env.example .env
+
+      - name: Generate web platform folder
+        # web/ в репозитории не хранится — генерируем, как android/ и ios/
+        run: flutter create . --platforms=web
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web
+        # base-href обязан совпадать с именем репозитория, иначе на Pages
+        # не подгрузятся скрипты и будет белый экран.
+        run: flutter build web --release --base-href "/-komplekt-app2/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

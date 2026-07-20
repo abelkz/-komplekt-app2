@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -105,7 +103,8 @@ class PushService {
       await supabase.from('device_tokens').upsert({
         'token': token,
         'user_id': uid,
-        'platform': Platform.isIOS ? 'ios' : 'android',
+        // defaultTargetPlatform вместо dart:io — работает и в вебе
+        'platform': defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
         'updated_at': DateTime.now().toIso8601String(),
       });
     } catch (e) {

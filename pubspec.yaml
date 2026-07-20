@@ -57,6 +57,7 @@ dependencies:
   image_picker: ^1.1.2    # фото товара из галереи/камеры
   share_plus: ^10.0.2     # отправка файла (Excel) в другие приложения
   path_provider: ^2.1.4   # временная папка для файла перед отправкой
+  universal_io: ^2.2.2    # dart:io-совместимый API, компилируется и под веб
 
 dev_dependencies:
   flutter_test:
