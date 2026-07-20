@@ -160,7 +160,8 @@ class _CollectionBlock extends ConsumerWidget {
               child: _ExportButton(
                 icon: Icons.grid_on,
                 label: 'Excel',
-                onTap: () => _export(context, () => SpecExport.exportExcel(collection)),
+                onTap: () => _export(
+                    context, (o) => SpecExport.exportExcel(collection, shareOrigin: o)),
               ),
             ),
             const SizedBox(width: 9),
@@ -168,7 +169,8 @@ class _CollectionBlock extends ConsumerWidget {
               child: _ExportButton(
                 icon: Icons.picture_as_pdf_outlined,
                 label: 'PDF',
-                onTap: () => _export(context, () => SpecExport.exportPdf(collection)),
+                onTap: () => _export(
+                    context, (o) => SpecExport.exportPdf(collection, shareOrigin: o)),
               ),
             ),
           ],
@@ -194,13 +196,22 @@ class _CollectionBlock extends ConsumerWidget {
         const SnackBar(content: Text('Спецификация скопирована')));
   }
 
+  /// Прямоугольник кнопок экспорта в глобальных координатах — нужен iPad'у,
+  /// чтобы привязать поповер «Поделиться». На iPhone/Android не используется.
+  Rect? _shareOrigin(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
   Future<void> _export(
-      BuildContext context, Future<void> Function() action) async {
+      BuildContext context, Future<void> Function(Rect? origin) action) async {
     final messenger = ScaffoldMessenger.of(context);
+    final origin = _shareOrigin(context);
     messenger.showSnackBar(
         const SnackBar(content: Text('Готовлю файл…')));
     try {
-      await action();
+      await action(origin);
     } catch (e) {
       final msg = e.toString().startsWith('Failure: ')
           ? e.toString().substring(9)

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Rect;
 
 import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
@@ -47,7 +48,10 @@ class SpecExport {
   }
 
   // ───────────────────────── Excel ─────────────────────────
-  static Future<void> exportExcel(Collection c) async {
+  /// [shareOrigin] — прямоугольник-источник для системного «Поделиться».
+  /// На iPad меню показывается поповером и без него UIKit роняет приложение;
+  /// на iPhone и Android параметр игнорируется.
+  static Future<void> exportExcel(Collection c, {Rect? shareOrigin}) async {
     final rows = _rows(c);
     final excel = Excel.createExcel();
     const sheetName = 'Спецификация';
@@ -104,11 +108,13 @@ class SpecExport {
     await Share.shareXFiles(
       [XFile(file.path)],
       subject: 'Спецификация «${c.name}»',
+      sharePositionOrigin: shareOrigin,
     );
   }
 
   // ───────────────────────── PDF ─────────────────────────
-  static Future<void> exportPdf(Collection c) async {
+  /// [shareOrigin] — см. комментарий у [exportExcel] (поповер на iPad).
+  static Future<void> exportPdf(Collection c, {Rect? shareOrigin}) async {
     final rows = _rows(c);
     // Шрифты Open Sans поддерживают кириллицу
     final regular = await PdfGoogleFonts.openSansRegular();
@@ -201,7 +207,11 @@ class SpecExport {
     );
 
     final bytes = await doc.save();
-    await Printing.sharePdf(bytes: bytes, filename: '${_fileBase(c)}.pdf');
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: '${_fileBase(c)}.pdf',
+      bounds: shareOrigin,
+    );
   }
 }
 

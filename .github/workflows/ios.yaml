@@ -1,0 +1,103 @@
+name: CI & Build iOS
+
+# Сборка под iOS на macOS-раннере GitHub (свой Mac не нужен).
+# Результат — приложение для симулятора iPhone: подтверждает, что проект
+# собирается без ошибок. Для установки на реальный iPhone нужен платный
+# Apple Developer ($99/год) и подпись — см. блок «Подпись» внизу файла.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Prepare .env (demo)
+        run: cp .env.example .env
+
+      - name: Generate iOS platform folder
+        # Папка ios/ в репозитории не хранится — генерируем так же,
+        # как android/ в основном workflow.
+        run: flutter create . --platforms=ios
+
+      - name: Configure Info.plist (разрешения и схемы)
+        # Без этих строк iOS убивает приложение при первом обращении
+        # к галерее/геопозиции, а canLaunchUrl('tel:') возвращает false.
+        run: |
+          P=ios/Runner/Info.plist
+          set_str() {
+            /usr/libexec/PlistBuddy -c "Delete :$1" "$P" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :$1 string $2" "$P"
+          }
+          set_str NSPhotoLibraryUsageDescription \
+            "Доступ к фото нужен, чтобы прикрепить изображение товара к вашему прайсу."
+          set_str NSCameraUsageDescription \
+            "Доступ к камере нужен, чтобы сфотографировать товар для карточки."
+          set_str NSLocationWhenInUseUsageDescription \
+            "Геопозиция нужна, чтобы показать поставщиков рядом с вами на карте."
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$P"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string tel" "$P"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string whatsapp" "$P"
+          echo "── Итоговый Info.plist ──"
+          /usr/libexec/PlistBuddy -c "Print" "$P"
+
+      - name: Set iOS deployment target 13.0
+        # firebase_core 3.x требует минимум iOS 13, Flutter по умолчанию ставит 12.
+        run: |
+          if grep -q "^# *platform :ios" ios/Podfile; then
+            sed -i '' "s/^# *platform :ios.*/platform :ios, '13.0'/" ios/Podfile
+          elif ! grep -q "^platform :ios" ios/Podfile; then
+            printf "platform :ios, '13.0'\n%s\n" "$(cat ios/Podfile)" > ios/Podfile
+          else
+            sed -i '' "s/^platform :ios.*/platform :ios, '13.0'/" ios/Podfile
+          fi
+          sed -i '' -E "s/IPHONEOS_DEPLOYMENT_TARGET = 1[0-2]\.[0-9]+;/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/g" \
+            ios/Runner.xcodeproj/project.pbxproj
+          head -3 ios/Podfile
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze (ошибки компиляции и предупреждения)
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Run tests
+        run: flutter test
+        continue-on-error: true
+
+      - name: Build for iOS Simulator
+        # Симулятор не требует подписи — поэтому сборка бесплатна.
+        run: flutter build ios --simulator --debug
+
+      - name: Package .app
+        run: |
+          cd build/ios/iphonesimulator
+          zip -qr "$GITHUB_WORKSPACE/komplekt-ios-simulator.zip" Runner.app
+
+      - name: Upload .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: komplekt-ios-simulator
+          path: komplekt-ios-simulator.zip
+          if-no-files-found: error
+
+# ─────────────────────────── Подпись (позже) ───────────────────────────
+# Чтобы поставить приложение на настоящий iPhone или выложить в TestFlight,
+# нужен Apple Developer ($99/год). Тогда к этому workflow добавляется:
+#   1. Сертификат и provisioning profile в Secrets репозитория;
+#   2. Шаг apple-actions/import-codesign-certs@v3;
+#   3. flutter build ipa --export-options-plist=ios/ExportOptions.plist;
+#   4. Выгрузка через apple-actions/upload-testflight-build@v1.
+# Также для пуш-уведомлений понадобится GoogleService-Info.plist (Firebase)
+# и APNs-ключ — без них приложение работает, но без уведомлений о ценах.
