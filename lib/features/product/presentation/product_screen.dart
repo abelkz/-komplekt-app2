@@ -8,6 +8,8 @@ import '../../../core/config/env.dart';
 import '../../../core/config/supabase_client.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
@@ -78,8 +80,6 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
   @override
   Widget build(BuildContext context) {
     final productId = widget.productId;
-    final c = context.colors;
-    final product = ref.watch(productProvider(productId));
 
     // Засчитываем просмотр поставщикам один раз, когда товар загрузился
     ref.listen(productProvider(productId), (_, next) {
@@ -92,10 +92,24 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
     final isFav = ref.watch(favoriteIdsProvider
         .select((s) => s.valueOrNull?.contains(productId) ?? false));
 
+    // «Паспорт образца» всегда тёмный — независимо от темы приложения.
+    // Обёртка в тёмную тему разом переводит все дочерние виджеты
+    // (шапку, предложения, отзывы) на кость по туши.
+    return Theme(
+      data: AppTheme.dark(),
+      child: Builder(builder: (context) => _scaffold(context, productId, isFav)),
+    );
+  }
+
+  Widget _scaffold(BuildContext context, String productId, bool isFav) {
+    final c = context.colors;
+    final product = ref.watch(productProvider(productId));
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Сравнение цен',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        title: Text('ПАСПОРТ ОБРАЗЦА',
+            style: AppTypography.mono(
+                size: 11, weight: FontWeight.w700, color: c.ink)),
         actions: [
           IconButton(
             icon: Icon(
@@ -156,23 +170,28 @@ class _ProductBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 18),
-        Text('ПРЕДЛОЖЕНИЯ ПОСТАВЩИКОВ',
-            style: TextStyle(
-                fontSize: 10,
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w700,
-                color: c.faint)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Text('ШКАЛА ЦЕН — ${offers.length} ПОСТ.',
+                  style: AppTypography.sectionLabel(color: c.gray)),
+            ),
+            if (offers.length > 1)
+              Text(
+                'Δ ${Formatters.price(offers.last.price - mn)}',
+                style: AppTypography.mono(size: 10, color: c.accent),
+              ),
+          ],
+        ),
         const SizedBox(height: 10),
         for (int i = 0; i < offers.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: _OfferCard(
-              offer: offers[i],
-              minPrice: mn,
-              best: i == 0,
-              productId: product.id,
-              productName: product.name,
-            ),
+          _OfferCard(
+            offer: offers[i],
+            minPrice: mn,
+            best: i == 0,
+            productId: product.id,
+            productName: product.name,
           ),
         const SizedBox(height: 18),
         ReviewsSection(productId: product.id),
@@ -181,6 +200,8 @@ class _ProductBody extends StatelessWidget {
   }
 }
 
+/// Фото образца с кроп-метками по углам, номером артикула и растворением
+/// нижнего края в фон — как отпечаток образца в типографской спецификации.
 class _Hero extends StatelessWidget {
   const _Hero({required this.product});
   final Product product;
@@ -194,19 +215,92 @@ class _Hero extends StatelessWidget {
         ? Colors.white24
         : Colors.black12;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadii.lg),
-      child: SizedBox(
-        height: 200,
-        width: double.infinity,
-        child: url != null
-            ? CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
-            : Container(
-                color: bg,
-                alignment: Alignment.center,
-                child: Icon(CategoryIcons.of(product.categorySlug),
-                    size: 64, color: onBg),
+    return SizedBox(
+      height: 250,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (url != null)
+            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
+          else
+            Container(
+              color: bg,
+              alignment: Alignment.center,
+              child: Icon(CategoryIcons.of(product.categorySlug),
+                  size: 64, color: onBg),
+            ),
+          // кроп-метки по четырём углам
+          const _CropMark(top: 16, left: 16),
+          const _CropMark(top: 16, right: 16),
+          const _CropMark(bottom: 16, left: 16),
+          const _CropMark(bottom: 16, right: 16),
+          // номер образца
+          Positioned(
+            top: 20,
+            left: 0,
+            right: 0,
+            child: Text(
+              product.sku.isNotEmpty
+                  ? 'ОБРАЗЕЦ № ${product.sku}'
+                  : 'ОБРАЗЕЦ',
+              textAlign: TextAlign.center,
+              style: AppTypography.mono(
+                size: 10,
+                color: AppColors.brandBone,
+                letterSpacing: 2,
+              ).copyWith(shadows: const [
+                Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
+              ]),
+            ),
+          ),
+          // растворение нижнего края в фон экрана
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: -1,
+            height: 90,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [c.paper.withValues(alpha: 0), c.paper],
+                ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Уголок кроп-метки: две линии, как метки реза в типографии.
+class _CropMark extends StatelessWidget {
+  const _CropMark({this.top, this.bottom, this.left, this.right});
+
+  final double? top, bottom, left, right;
+
+  @override
+  Widget build(BuildContext context) {
+    const side = BorderSide(color: AppColors.brandBone, width: 2);
+    return Positioned(
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+      child: Container(
+        width: 18,
+        height: 18,
+        decoration: BoxDecoration(
+          border: Border(
+            top: top != null ? side : BorderSide.none,
+            bottom: bottom != null ? side : BorderSide.none,
+            left: left != null ? side : BorderSide.none,
+            right: right != null ? side : BorderSide.none,
+          ),
+        ),
       ),
     );
   }
@@ -239,13 +333,18 @@ class _OfferCard extends ConsumerWidget {
     }
     final barWidth = (100 - diff * 4).clamp(8, 100) / 100;
 
+    // Отметка на шкале цен: у лучшего предложения — жирный жёлтый штрих,
+    // у остальных — тонкая линейка. Чем дороже, тем бледнее строка.
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.fromLTRB(15, 13, 6, 13),
       decoration: BoxDecoration(
-        color: c.card,
-        border: Border.all(
-            color: best ? c.orange : c.line, width: best ? 1.5 : 1),
-        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border(
+          left: BorderSide(
+            color: best ? c.accent : c.ink.withValues(alpha: 0.35),
+            width: best ? 3 : 1.5,
+          ),
+          bottom: BorderSide(color: c.line),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,10 +395,9 @@ class _OfferCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(Formatters.price(offer.price),
-                      style: TextStyle(
-                          fontSize: best ? 17 : 15,
-                          fontWeight: FontWeight.w800,
-                          color: c.ink)),
+                      style: AppTypography.unbounded(
+                          size: best ? 17 : 14,
+                          color: best ? c.accent : c.ink)),
                   if (!best && diff > 0)
                     Text('+$diff% к мин.',
                         style: TextStyle(
@@ -378,15 +476,14 @@ class _AddToCollectionBar extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: SizedBox(
           width: double.infinity,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: inCollection ? c.green : c.ink,
-              foregroundColor: Colors.white,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: inCollection ? c.green : c.accent,
+              foregroundColor:
+                  inCollection ? Colors.white : AppColors.brandInk,
             ),
             icon: Icon(inCollection ? Icons.check : Icons.add, size: 20),
-            label: Text(inCollection
-                ? 'В подборке проекта'
-                : 'Добавить в подборку проекта'),
+            label: Text(inCollection ? 'В комплекте' : 'В комплект +'),
             onPressed: () async {
               try {
                 final name = await ref
