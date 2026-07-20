@@ -10,8 +10,9 @@ class CollectionsRepository {
 
   static const _select =
       'id,name,created_at,'
-      'collection_items(id,product_id,qty,'
-      'products(id,name,sku,unit,color,rating,category_slug,brand,'
+      'project_items(id,product_id,qty,'
+      'products(id,name,sku,unit,color,image_url,rating,category_slug,'
+      'brands(name),'
       'product_images(url,sort),'
       'offers(id,price,in_stock,price_updated_at,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website))))';
@@ -22,7 +23,7 @@ class CollectionsRepository {
     if (uid == null) return [];
     try {
       final rows = await supabase
-          .from('collections')
+          .from('projects')
           .select(_select)
           .eq('user_id', uid)
           .order('created_at');
@@ -45,7 +46,7 @@ class CollectionsRepository {
     if (uid == null) throw const Failure('Войдите, чтобы создать подборку');
     try {
       final row = await supabase
-          .from('collections')
+          .from('projects')
           .insert({'user_id': uid, 'name': name})
           .select('id')
           .single();
@@ -58,7 +59,7 @@ class CollectionsRepository {
   Future<void> rename(String collectionId, String name) async {
     try {
       await supabase
-          .from('collections')
+          .from('projects')
           .update({'name': name}).eq('id', collectionId);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось переименовать');
@@ -67,7 +68,7 @@ class CollectionsRepository {
 
   Future<void> deleteCollection(String collectionId) async {
     try {
-      await supabase.from('collections').delete().eq('id', collectionId);
+      await supabase.from('projects').delete().eq('id', collectionId);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось удалить подборку');
     }
@@ -79,11 +80,11 @@ class CollectionsRepository {
     double qty = 1,
   }) async {
     try {
-      await supabase.from('collection_items').upsert({
-        'collection_id': collectionId,
+      await supabase.from('project_items').upsert({
+        'project_id': collectionId,
         'product_id': productId,
         'qty': qty,
-      }, onConflict: 'collection_id,product_id');
+      }, onConflict: 'project_id,product_id');
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось добавить в подборку');
     }
@@ -100,9 +101,9 @@ class CollectionsRepository {
         return;
       }
       await supabase
-          .from('collection_items')
+          .from('project_items')
           .update({'qty': qty})
-          .eq('collection_id', collectionId)
+          .eq('project_id', collectionId)
           .eq('product_id', productId);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось изменить количество');
@@ -115,9 +116,9 @@ class CollectionsRepository {
   }) async {
     try {
       await supabase
-          .from('collection_items')
+          .from('project_items')
           .delete()
-          .eq('collection_id', collectionId)
+          .eq('project_id', collectionId)
           .eq('product_id', productId);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось убрать позицию');

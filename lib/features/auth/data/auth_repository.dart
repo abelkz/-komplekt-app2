@@ -81,7 +81,7 @@ class AuthRepository {
     if (uid == null) return null;
     try {
       final row =
-          await supabase.from('users').select().eq('id', uid).maybeSingle();
+          await supabase.from('profiles').select().eq('id', uid).maybeSingle();
       return row == null ? null : AppUser.fromMap(row);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить профиль');
@@ -92,7 +92,7 @@ class AuthRepository {
     final uid = currentUser?.id;
     if (uid == null) return;
     try {
-      await supabase.from('users').update({'city': city}).eq('id', uid);
+      await supabase.from('profiles').update({'city': city}).eq('id', uid);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось обновить город');
     }
@@ -106,7 +106,7 @@ class AuthRepository {
     final uid = currentUser?.id;
     if (uid == null) return;
     try {
-      await supabase.from('users').update({
+      await supabase.from('profiles').update({
         'notify_price_drops': enabled,
         'notify_threshold': threshold,
       }).eq('id', uid);

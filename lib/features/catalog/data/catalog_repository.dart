@@ -12,7 +12,8 @@ class CatalogRepository {
   // Поля товара с вложенными фото и предложениями (с именем поставщика).
   // ВАЖНО: без пробелов/переносов — PostgREST требует компактную строку.
   static const _productSelect =
-      'id,name,sku,unit,color,description,rating,category_slug,brand,'
+      'id,name,sku,unit,color,image_url,description,rating,category_slug,'
+      'brands(name),'
       'product_images(url,sort),'
       'offers(id,price,in_stock,price_updated_at,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website))';

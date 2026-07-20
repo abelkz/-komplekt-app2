@@ -99,14 +99,27 @@ class Product {
       color: m['color'] as String?,
       description: m['description'] as String?,
       rating: (m['rating'] as num?)?.toDouble() ?? 0,
-      images: (m['product_images'] as List?)
-              ?.map((e) => ProductImage.fromMap(e as Map<String, dynamic>))
-              .toList() ??
-          const [],
+      images: _images(m),
       offers: (m['offers'] as List?)
               ?.map((e) => Offer.fromMap(e as Map<String, dynamic>))
               .toList() ??
           const [],
     );
+  }
+
+  /// Фото товара. Сначала берём галерею product_images, а если её нет —
+  /// основное фото из products.image_url (так хранит его веб-версия,
+  /// с которой мы делим общую базу).
+  static List<ProductImage> _images(Map<String, dynamic> m) {
+    final gallery = (m['product_images'] as List?)
+        ?.map((e) => ProductImage.fromMap(e as Map<String, dynamic>))
+        .toList();
+    if (gallery != null && gallery.isNotEmpty) return gallery;
+
+    final main = m['image_url'] as String?;
+    if (main != null && main.isNotEmpty) {
+      return [ProductImage(url: main)];
+    }
+    return const [];
   }
 }

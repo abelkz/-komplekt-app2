@@ -30,10 +30,10 @@ class Offer {
     final supplier = m['suppliers'];
     final sup = supplier is Map<String, dynamic> ? supplier : const {};
     return Offer(
-      id: m['id'] as String?,
+      id: m['id']?.toString(),
       price: (m['price'] as num?)?.toDouble() ?? 0,
       inStock: m['in_stock'] as bool? ?? true,
-      supplierId: m['supplier_id'] as String?,
+      supplierId: m['supplier_id']?.toString(),
       supplierName: sup['name'] as String? ?? '',
       city: sup['city'] as String? ?? '',
       phone: sup['phone'] as String?,

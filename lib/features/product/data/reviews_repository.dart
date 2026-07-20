@@ -10,7 +10,7 @@ class ReviewsRepository {
     try {
       final rows = await supabase
           .from('reviews')
-          .select('id,rating,text,created_at,users(full_name)')
+          .select('id,rating,text,created_at,profiles(full_name)')
           .eq('product_id', productId)
           .order('created_at', ascending: false);
       return rows.map<Review>((m) => Review.fromMap(m)).toList();
