@@ -3,57 +3,86 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/tape_stripe.dart';
 import '../../collections/presentation/collections_providers.dart';
 import '../../favorites/presentation/favorites_providers.dart';
 
-/// Оболочка приложения с нижней навигацией (Поиск · Избранное · Подборки · Профиль).
+/// Оболочка приложения с навигацией-«рулеткой»:
+/// тёмная измерительная лента внизу, жёлтый бегунок отмечает активный раздел.
 class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
+  static const _tabs = ['ПОИСК', 'ИЗБРАННОЕ', 'КОМПЛЕКТЫ', 'ПРОФИЛЬ'];
+  static const _hPad = 20.0;
+  static const _markerW = 26.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final c = context.colors;
     final favCount = ref.watch(favoriteIdsProvider).valueOrNull?.length ?? 0;
     final colCount = ref.watch(collectionsItemCountProvider);
+    final badges = [0, favCount, colCount, 0];
+    final index = navigationShell.currentIndex;
 
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: c.card,
-          border: Border(top: BorderSide(color: c.line)),
-        ),
+        // «рулетка» всегда тёмная — в обеих темах, это часть бренда
+        color: AppColors.brandInk,
+        padding: const EdgeInsets.only(top: 14),
         child: SafeArea(
           top: false,
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _NavItem(
-                icon: Icons.search_rounded,
-                label: 'Поиск',
-                selected: navigationShell.currentIndex == 0,
-                onTap: () => _go(0),
+              // лента с делениями и жёлтым бегунком над активным разделом
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final tabWidth = (constraints.maxWidth - _hPad * 2) / _tabs.length;
+                  final markerLeft =
+                      _hPad + tabWidth * (index + 0.5) - _markerW / 2;
+                  return SizedBox(
+                    height: 18,
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: _hPad,
+                          right: _hPad,
+                          top: 2,
+                          height: 14,
+                          child: const DarkRuler(),
+                        ),
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          left: markerLeft,
+                          top: 0,
+                          width: _markerW,
+                          height: 18,
+                          child: const ColoredBox(
+                            color: AppColors.brandYellow,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
-              _NavItem(
-                icon: Icons.favorite_border,
-                label: 'Избранное',
-                badge: favCount,
-                selected: navigationShell.currentIndex == 1,
-                onTap: () => _go(1),
-              ),
-              _NavItem(
-                icon: Icons.layers_outlined,
-                label: 'Подборки',
-                badge: colCount,
-                selected: navigationShell.currentIndex == 2,
-                onTap: () => _go(2),
-              ),
-              _NavItem(
-                icon: Icons.person_outline,
-                label: 'Профиль',
-                selected: navigationShell.currentIndex == 3,
-                onTap: () => _go(3),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(_hPad, 10, _hPad, 6),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < _tabs.length; i++)
+                      _NavItem(
+                        label: _tabs[i],
+                        badge: badges[i],
+                        selected: index == i,
+                        onTap: () => _go(i),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -73,14 +102,12 @@ class HomeShell extends ConsumerWidget {
 
 class _NavItem extends StatelessWidget {
   const _NavItem({
-    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
     this.badge = 0,
   });
 
-  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -88,31 +115,43 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    final color = selected ? c.orange : c.faint;
+    final color = selected
+        ? AppColors.brandYellow
+        : AppColors.brandBone.withValues(alpha: 0.55);
+
     return Expanded(
       child: InkWell(
         onTap: onTap,
+        splashColor: AppColors.brandYellow.withValues(alpha: 0.15),
         child: Padding(
-          padding: const EdgeInsets.only(top: 10, bottom: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Badge.count(
-                count: badge,
-                isLabelVisible: badge > 0,
-                backgroundColor: c.orange,
-                child: Icon(icon, size: 22, color: color),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: color,
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.mono(
+                    size: 9.5,
+                    weight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: color,
+                  ),
                 ),
               ),
+              if (badge > 0) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '$badge',
+                  style: AppTypography.mono(
+                    size: 9.5,
+                    weight: FontWeight.w700,
+                    color: AppColors.brandYellow,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
