@@ -3,16 +3,28 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../domain/product.dart';
 import 'product_thumb.dart';
 
-/// Карточка товара в списке: фото · название · мин. цена · экономия.
-/// Используется в результатах поиска, каталоге и избранном.
+/// Строка ленты-спецификации: № · фото · название · мин. цена · дельта.
+/// Строки идут вплотную и разделяются волосяной линейкой — вместе они
+/// читаются как таблица документа, а не как набор карточек.
 class ProductCard extends StatelessWidget {
-  const ProductCard({super.key, required this.product, this.compact = false});
+  const ProductCard({
+    super.key,
+    required this.product,
+    this.index,
+    this.compact = false,
+  });
 
   final Product product;
+
+  /// Порядковый номер в ленте: рисуется как 01, 02, 03…
+  /// Если не передан, колонка с номером не показывается.
+  final int? index;
+
   final bool compact;
 
   @override
@@ -20,120 +32,123 @@ class ProductCard extends StatelessWidget {
     final c = context.colors;
     final mn = product.minPrice;
     final saving = product.savingPercent;
+    final thumb = compact ? 46.0 : 60.0;
 
     return Material(
-      color: c.card,
-      borderRadius: BorderRadius.circular(AppRadii.md),
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadii.md),
         onTap: () => context.push(Routes.product(product.id)),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: c.line),
-            borderRadius: BorderRadius.circular(AppRadii.md),
-          ),
-          padding: const EdgeInsets.all(14),
+        child: IntrinsicHeight(
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ProductThumb(product: product, size: compact ? 46 : 68),
-              const SizedBox(width: 13),
+              if (index != null)
+                Container(
+                  width: 40,
+                  decoration: BoxDecoration(
+                    border: Border(right: BorderSide(color: c.line)),
+                  ),
+                  padding: const EdgeInsets.only(top: 12),
+                  alignment: Alignment.topCenter,
+                  child: Text(
+                    (index! + 1).toString().padLeft(2, '0'),
+                    style: AppTypography.mono(size: 10, color: c.faint),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: ProductThumb(product: product, size: thumb),
+              ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                product.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.35,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                [
-                                  if (product.sku.isNotEmpty) 'арт. ${product.sku}',
-                                  if (product.brand.isNotEmpty) product.brand,
-                                ].join(' · '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 11, color: c.faint),
-                              ),
-                            ],
-                          ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(13, 12, 10, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          height: 1.25,
                         ),
-                        if (mn != null) ...[
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'от ${Formatters.price(mn)}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text('за ${product.unit}',
-                                  style:
-                                      TextStyle(fontSize: 10, color: c.faint)),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 11),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${product.offersCount} предложений',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: c.gray,
-                              fontWeight: FontWeight.w600),
-                        ),
-                        if (saving > 0)
-                          _Badge(
-                            text: 'экономия до $saving%',
-                            fg: c.green,
-                            bg: c.greenSoft,
-                          ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        _meta(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.mono(size: 10.5, color: c.gray),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              if (mn != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 12, 16, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        Formatters.price(mn),
+                        style: AppTypography.unbounded(size: 14, color: c.ink),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        saving > 0 ? '▼ $saving%' : '—',
+                        style: AppTypography.mono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          color: saving > 0 ? c.green : c.faint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
   }
+
+  String _meta() {
+    final parts = <String>[
+      if (product.offersCount > 0)
+        '${product.offersCount} ${_plural(product.offersCount)}',
+      if (product.unit.isNotEmpty) '₸/${product.unit}',
+    ];
+    if (parts.isEmpty && product.sku.isNotEmpty) return 'арт. ${product.sku}';
+    return parts.join(' · ');
+  }
+
+  static String _plural(int n) {
+    final m = n % 10, h = n % 100;
+    if (m == 1 && h != 11) return 'поставщик';
+    if (m >= 2 && m <= 4 && (h < 10 || h >= 20)) return 'поставщика';
+    return 'поставщиков';
+  }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge({required this.text, required this.fg, required this.bg});
-  final String text;
-  final Color fg;
-  final Color bg;
+/// Волосяной разделитель между строками ленты.
+class SpecDivider extends StatelessWidget {
+  const SpecDivider({super.key});
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
-      );
+  Widget build(BuildContext context) =>
+      Divider(height: 1, thickness: 1, color: context.colors.line);
+}
+
+/// Жирная линейка — открывает и закрывает ленту-спецификацию.
+class SpecEdge extends StatelessWidget {
+  const SpecEdge({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      Divider(height: 1.5, thickness: 1.5, color: context.colors.ink);
 }

@@ -41,10 +41,10 @@ class FavoritesScreen extends ConsumerWidget {
                   onRefresh: () async =>
                       ref.invalidate(favoriteProductsProvider),
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    padding: const EdgeInsets.only(top: 8, bottom: 24),
                     itemCount: list.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 11),
-                    itemBuilder: (_, i) => ProductCard(product: list[i]),
+                    separatorBuilder: (_, __) => const SpecDivider(),
+                    itemBuilder: (_, i) => ProductCard(product: list[i], index: i),
                   ),
                 ),
               ),
