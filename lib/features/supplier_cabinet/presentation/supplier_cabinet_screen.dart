@@ -82,7 +82,7 @@ class _BecomeSupplier extends ConsumerWidget {
                       height: 18,
                       width: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2, color: AppColors.brandInk))
                   : const Text('Стать поставщиком'),
             ),
           ],

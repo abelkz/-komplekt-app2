@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// Палитра КОМПЛЕКТ как ThemeExtension — токены 1:1 из HTML-прототипа.
-/// Доступ из виджетов: `context.colors.orange`, `context.colors.line` и т.д.
+/// Палитра КОМПЛЕКТ как ThemeExtension — токены дизайна «Спецификация»:
+/// тушь на кости + сигнальный хром-жёлтый маркер.
+/// Доступ из виджетов: `context.colors.accent`, `context.colors.line` и т.д.
+///
+/// Имена полей сохранены с прошлой версии темы, чтобы не переписывать
+/// полсотни виджетов. Важно: поле [orange] теперь хранит хром-жёлтый акцент —
+/// для нового кода используйте понятный псевдоним [accent].
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({
@@ -20,52 +25,64 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.field,
   });
 
-  final Color ink; // основной текст
-  final Color paper; // фон экрана
-  final Color card; // карточки
-  final Color line; // границы
+  final Color ink; // основной текст / «тушь»
+  final Color paper; // фон экрана / «кость»
+  final Color card; // поверхности
+  final Color line; // тонкие линейки
   final Color gray; // вторичный текст
   final Color faint; // третичный текст / плейсхолдеры
-  final Color orange; // акцент
-  final Color orangeSoft;
+  final Color orange; // акцент (хром-жёлтый) — см. [accent]
+  final Color orangeSoft; // мягкая подложка акцента
   final Color green;
   final Color greenSoft;
   final Color red;
   final Color redSoft;
   final Color field; // поля ввода / чипы
 
-  // Светлая тема (значения из :root прототипа)
+  /// Хром-жёлтый акцент — понятное имя для [orange].
+  Color get accent => orange;
+
+  /// Мягкая жёлтая подложка — понятное имя для [orangeSoft].
+  Color get accentSoft => orangeSoft;
+
+  /// Константы бренда, не зависящие от темы: на жёлтом текст всегда тушью,
+  /// а «рулетка» навигации всегда тёмная.
+  static const brandInk = Color(0xFF161410);
+  static const brandBone = Color(0xFFEAE5DA);
+  static const brandYellow = Color(0xFFF2B800);
+
+  // Светлая тема: тушь на кости
   static const light = AppColors(
-    ink: Color(0xFF17191A),
-    paper: Color(0xFFF4F2EE),
-    card: Color(0xFFFFFFFF),
-    line: Color(0xFFE8E5DF),
-    gray: Color(0xFF73726D),
-    faint: Color(0xFFA6A39C),
-    orange: Color(0xFFE8490D),
-    orangeSoft: Color(0xFFFDEAE0),
-    green: Color(0xFF1C7A49),
-    greenSoft: Color(0xFFE6F4EC),
-    red: Color(0xFFBB4036),
-    redSoft: Color(0xFFFBEAE8),
-    field: Color(0xFFF4F2EE),
+    ink: Color(0xFF161410),
+    paper: Color(0xFFEAE5DA),
+    card: Color(0xFFF1ECE3),
+    line: Color(0xFFB5B1A8),
+    gray: Color(0xFF75726B),
+    faint: Color(0xFF8B877F),
+    orange: brandYellow,
+    orangeSoft: Color(0xFFF6E7AE),
+    green: Color(0xFF0D7A3F),
+    greenSoft: Color(0xFFD9E8DE),
+    red: Color(0xFFB3400E),
+    redSoft: Color(0xFFF2DCD2),
+    field: Color(0xFFF2EFE7),
   );
 
-  // Тёмная тема (html[data-theme="dark"])
+  // Тёмная тема: кость на туши
   static const dark = AppColors(
-    ink: Color(0xFFF3F1EC),
-    paper: Color(0xFF141514),
-    card: Color(0xFF1E201E),
-    line: Color(0xFF2C2E2C),
-    gray: Color(0xFF9A9893),
-    faint: Color(0xFF6C6E6A),
-    orange: Color(0xFFFF5A23),
-    orangeSoft: Color(0xFF3A2118),
-    green: Color(0xFF3FAE74),
-    greenSoft: Color(0xFF15301F),
-    red: Color(0xFFE0695E),
-    redSoft: Color(0xFF341C19),
-    field: Color(0xFF262826),
+    ink: Color(0xFFEAE5DA),
+    paper: Color(0xFF161410),
+    card: Color(0xFF1E1B16),
+    line: Color(0xFF4B4842),
+    gray: Color(0xFF8B877F),
+    faint: Color(0xFF75726B),
+    orange: brandYellow,
+    orangeSoft: Color(0xFF3A2E10),
+    green: Color(0xFF0FA45A),
+    greenSoft: Color(0xFF13301E),
+    red: Color(0xFFD05A28),
+    redSoft: Color(0xFF34190F),
+    field: Color(0xFF221F19),
   );
 
   @override
@@ -122,15 +139,16 @@ class AppColors extends ThemeExtension<AppColors> {
   }
 }
 
-/// Сахар: `context.colors.orange`
+/// Сахар: `context.colors.accent`
 extension AppColorsX on BuildContext {
   AppColors get colors => Theme.of(this).extension<AppColors>()!;
 }
 
-/// Радиусы скругления из прототипа (--r-lg/md/sm).
+/// Скругления. В «Спецификации» углы острые — приложение выглядит
+/// как типографский документ, а не как набор мягких карточек.
 class AppRadii {
   AppRadii._();
-  static const double lg = 20;
-  static const double md = 14;
-  static const double sm = 11;
+  static const double lg = 0;
+  static const double md = 0;
+  static const double sm = 0;
 }

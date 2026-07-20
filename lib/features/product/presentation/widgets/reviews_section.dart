@@ -187,7 +187,7 @@ class _ReviewFormState extends ConsumerState<_ReviewForm> {
                       height: 18,
                       width: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2, color: AppColors.brandInk))
                   : const Text('Отправить'),
             ),
           ),

@@ -106,7 +106,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 height: 18,
                                 width: 18,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
+                                    strokeWidth: 2, color: AppColors.brandInk))
                             : Text(_primaryLabel()),
                       ),
                     ),

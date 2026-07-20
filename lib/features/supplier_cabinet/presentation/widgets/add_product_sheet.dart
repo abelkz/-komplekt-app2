@@ -251,7 +251,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
                         height: 18,
                         width: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                            strokeWidth: 2, color: AppColors.brandInk))
                     : const Text('Сохранить'),
               ),
             ),

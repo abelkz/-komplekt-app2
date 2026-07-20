@@ -278,7 +278,7 @@ class _OfferCard extends ConsumerWidget {
                                 style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w800,
-                                    color: Colors.white)),
+                                    color: AppColors.brandInk)),
                           ),
                         ],
                       ],
