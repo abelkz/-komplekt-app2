@@ -65,6 +65,21 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1   # иконки из brand/logo.png (см. ниже)
+
+# Иконка приложения на всех платформах.
+# Генерируется в CI командой `dart run flutter_launcher_icons` — папки
+# android/ios/web создаются при сборке, поэтому иконки тоже делаются там.
+# Шаг пропускается, если brand/logo.png ещё не положили в репозиторий.
+flutter_launcher_icons:
+  image_path: "brand/logo.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true            # App Store не принимает прозрачность
+  web:
+    generate: true
+    background_color: "#161410"
+    theme_color: "#f2b800"
 
 flutter:
   uses-material-design: true

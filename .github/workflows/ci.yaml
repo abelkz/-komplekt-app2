@@ -78,6 +78,16 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Иконки из фирменного знака
+        # Здесь есть только android/ — веб-часть конфига пропускается сама.
+        # Ошибку не считаем фатальной: APK важнее иконки.
+        run: |
+          if [ -f brand/logo.png ]; then
+            dart run flutter_launcher_icons || echo "иконки пропущены"
+          else
+            echo "brand/logo.png нет — иконки по умолчанию"
+          fi
+
       - name: Analyze
         run: flutter analyze
         continue-on-error: true

@@ -64,6 +64,16 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Иконки из фирменного знака
+        # Пропускаем, пока brand/logo.png не положили в репозиторий.
+        # Ошибку не считаем фатальной: сайт важнее иконки.
+        run: |
+          if [ -f brand/logo.png ]; then
+            dart run flutter_launcher_icons || echo "иконки пропущены"
+          else
+            echo "brand/logo.png нет — иконки по умолчанию"
+          fi
+
       - name: Build web
         # base-href обязан совпадать с именем репозитория, иначе на Pages
         # не подгрузятся скрипты и будет белый экран.
