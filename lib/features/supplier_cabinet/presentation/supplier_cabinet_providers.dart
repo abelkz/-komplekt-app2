@@ -75,6 +75,23 @@ class CabinetController extends AsyncNotifier<void> {
             imageUrl: imageUrl,
           ));
 
+  Future<bool> updateProduct({
+    required String productId,
+    required String name,
+    required String categorySlug,
+    required String unit,
+    String? sku,
+    String? imageUrl,
+  }) =>
+      _run(() => ref.read(supplierCabinetRepositoryProvider).updateProduct(
+            productId: productId,
+            name: name,
+            categorySlug: categorySlug,
+            unit: unit,
+            sku: sku,
+            imageUrl: imageUrl,
+          ));
+
   Future<bool> saveOffer({
     String? offerId,
     required String productId,

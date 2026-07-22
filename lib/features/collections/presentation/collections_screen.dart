@@ -442,6 +442,19 @@ class _ItemRow extends ConsumerWidget {
     }
   }
 
+  /// Ввод количества с клавиатуры — набирать 40 штук плюсиком невозможно.
+  Future<void> _editQty(
+      BuildContext context, CollectionsNotifier notifier, Product p) async {
+    final value = await showDialog<double>(
+      context: context,
+      builder: (_) => _QtyDialog(qty: item.qty, unit: p.unit, name: p.name),
+    );
+    if (value == null) return;
+    try {
+      await notifier.setQty(collectionId, p.id, value);
+    } catch (_) {/* ошибку покажет сам экран при перезагрузке */}
+  }
+
   Widget _card(BuildContext context, AppColors c, WidgetRef ref, Product p,
       Offer? best, CollectionsNotifier notifier) {
     return Container(
@@ -494,6 +507,9 @@ class _ItemRow extends ConsumerWidget {
                     collectionId, p.id, item.qty - 1),
                 onPlus: () => notifier.setQty(
                     collectionId, p.id, item.qty + 1),
+                // по нажатию на число — ввод вручную: набирать 40 штук
+                // плюсиком невозможно
+                onEdit: () => _editQty(context, notifier, p),
               ),
               const Spacer(),
               Text(Formatters.priceOr(item.sum, fallback: '—'),
@@ -507,17 +523,90 @@ class _ItemRow extends ConsumerWidget {
   }
 }
 
+/// Ввод количества: поле сразу выделено, чтобы можно было набрать поверх.
+class _QtyDialog extends StatefulWidget {
+  const _QtyDialog({required this.qty, required this.unit, required this.name});
+  final double qty;
+  final String unit;
+  final String name;
+
+  @override
+  State<_QtyDialog> createState() => _QtyDialogState();
+}
+
+class _QtyDialogState extends State<_QtyDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final text = Formatters.number(widget.qty);
+    _ctrl = TextEditingController(text: text)
+      ..selection = TextSelection(baseOffset: 0, extentOffset: text.length);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final v = double.tryParse(_ctrl.text.replaceAll(',', '.').trim());
+    if (v == null || v <= 0) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.pop(context, v);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Количество'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: context.colors.gray)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ctrl,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(suffixText: widget.unit),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена')),
+          FilledButton(onPressed: _submit, child: const Text('Готово')),
+        ],
+      );
+}
+
 class _Stepper extends StatelessWidget {
   const _Stepper({
     required this.qty,
     required this.unit,
     required this.onMinus,
     required this.onPlus,
+    this.onEdit,
   });
   final double qty;
   final String unit;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
+
+  /// Нажатие по самому числу — ввод количества с клавиатуры
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -530,11 +619,22 @@ class _Stepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _btn(c, Icons.remove, onMinus),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text('${Formatters.number(qty)} $unit',
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700)),
+          InkWell(
+            onTap: onEdit,
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Text('${Formatters.number(qty)} $unit',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      // подчёркиванием намекаем, что число можно нажать
+                      decoration:
+                          onEdit == null ? null : TextDecoration.underline,
+                      decorationColor: c.gray,
+                      decorationStyle: TextDecorationStyle.dotted)),
+            ),
           ),
           _btn(c, Icons.add, onPlus),
         ],

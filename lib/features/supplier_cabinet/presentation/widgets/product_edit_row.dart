@@ -7,6 +7,7 @@ import '../../../catalog/domain/product.dart';
 import '../../../catalog/presentation/widgets/product_thumb.dart';
 import '../../data/supplier_cabinet_repository.dart';
 import '../supplier_cabinet_providers.dart';
+import 'add_product_sheet.dart';
 
 /// Строка редактирования товара в кабинете: цена, наличие, статистика.
 class ProductEditRow extends ConsumerStatefulWidget {
@@ -151,7 +152,15 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
                   ],
                 ),
               ),
+              // правка карточки: название, категория, фото, единица
               IconButton(
+                tooltip: 'Изменить товар',
+                icon: Icon(Icons.edit_outlined, color: c.gray, size: 20),
+                onPressed: () => showEditProductSheet(
+                    context, widget.supplierId, widget.product),
+              ),
+              IconButton(
+                tooltip: 'Удалить товар',
                 icon: Icon(Icons.delete_outline, color: c.red, size: 20),
                 onPressed: _delete,
               ),

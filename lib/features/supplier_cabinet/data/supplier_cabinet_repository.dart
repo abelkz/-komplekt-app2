@@ -170,6 +170,30 @@ class SupplierCabinetRepository {
     }
   }
 
+  /// Изменить карточку товара: название, артикул, единицу, категорию, фото.
+  /// Цена живёт отдельно, в предложении — её меняет [saveOffer].
+  Future<void> updateProduct({
+    required String productId,
+    required String name,
+    required String categorySlug,
+    required String unit,
+    String? sku,
+    String? imageUrl,
+  }) async {
+    await _requireSession();
+    try {
+      await supabase.from('products').update({
+        'name': name,
+        'sku': sku,
+        'unit': unit,
+        'category_slug': categorySlug,
+        'image_url': (imageUrl == null || imageUrl.isEmpty) ? null : imageUrl,
+      }).eq('id', productId);
+    } catch (e) {
+      throw _dbFail(e, 'Не удалось изменить товар');
+    }
+  }
+
   /// Обновить цену/наличие. Если предложения ещё нет — создаём.
   Future<void> saveOffer({
     String? offerId,

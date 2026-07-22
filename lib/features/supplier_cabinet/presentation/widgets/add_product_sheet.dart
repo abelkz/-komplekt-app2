@@ -4,9 +4,11 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/providers/providers.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../catalog/domain/product.dart';
 import '../../../catalog/presentation/catalog_providers.dart';
 import '../supplier_cabinet_providers.dart';
 
+/// Новый товар.
 Future<void> showAddProductSheet(BuildContext context, String supplierId) {
   return showModalBottomSheet(
     context: context,
@@ -15,9 +17,28 @@ Future<void> showAddProductSheet(BuildContext context, String supplierId) {
   );
 }
 
+/// Правка существующего товара: та же форма, заполненная его данными.
+/// Ошиблись категорией или забыли фото — исправляется здесь, а не
+/// удалением и созданием заново.
+Future<void> showEditProductSheet(
+  BuildContext context,
+  String supplierId,
+  Product product,
+) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => _AddProductSheet(supplierId: supplierId, product: product),
+  );
+}
+
 class _AddProductSheet extends ConsumerStatefulWidget {
-  const _AddProductSheet({required this.supplierId});
+  const _AddProductSheet({required this.supplierId, this.product});
   final String supplierId;
+
+  /// null — создаём новый товар, иначе правим этот
+  final Product? product;
+
   @override
   ConsumerState<_AddProductSheet> createState() => _AddProductSheetState();
 }
@@ -33,6 +54,26 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   String? _error;
   bool _uploading = false;
   String? _photoUrl; // загруженное фото (публичный URL)
+
+  bool get _editing => widget.product != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.product;
+    if (p == null) return;
+    _name.text = p.name;
+    _sku.text = p.sku;
+    _unit = _units.contains(p.unit) ? p.unit : 'шт';
+    _category = p.categorySlug;
+    _img.text = p.primaryImageUrl ?? '';
+    _photoUrl = p.primaryImageUrl;
+    final offer = p.offers.isNotEmpty ? p.offers.first : null;
+    if (offer != null) {
+      _price.text = offer.price.toStringAsFixed(0);
+      _inStock = offer.inStock;
+    }
+  }
 
   Future<void> _pickPhoto() async {
     setState(() {
@@ -93,21 +134,48 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
       setState(() => _error = 'Укажите корректную цену');
       return;
     }
-    final ok = await ref.read(cabinetControllerProvider.notifier).addProduct(
-          name: name,
-          categorySlug: _category!,
-          unit: _unit,
+    final ctrl = ref.read(cabinetControllerProvider.notifier);
+    final sku = _sku.text.trim().isEmpty ? null : _sku.text.trim();
+    final img = _img.text.trim().isEmpty ? null : _img.text.trim();
+
+    bool ok;
+    if (_editing) {
+      final p = widget.product!;
+      ok = await ctrl.updateProduct(
+        productId: p.id,
+        name: name,
+        categorySlug: _category!,
+        unit: _unit,
+        sku: sku,
+        imageUrl: img,
+      );
+      // цена живёт в предложении — сохраняем её отдельно
+      if (ok) {
+        ok = await ctrl.saveOffer(
+          offerId: p.offers.isNotEmpty ? p.offers.first.id : null,
+          productId: p.id,
+          supplierId: widget.supplierId,
           price: price,
           inStock: _inStock,
-          supplierId: widget.supplierId,
-          sku: _sku.text.trim().isEmpty ? null : _sku.text.trim(),
-          imageUrl: _img.text.trim().isEmpty ? null : _img.text.trim(),
         );
+      }
+    } else {
+      ok = await ctrl.addProduct(
+        name: name,
+        categorySlug: _category!,
+        unit: _unit,
+        price: price,
+        inStock: _inStock,
+        supplierId: widget.supplierId,
+        sku: sku,
+        imageUrl: img,
+      );
+    }
     if (!mounted) return;
     if (ok) {
       Navigator.pop(context);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Товар добавлен ✓')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_editing ? 'Товар изменён ✓' : 'Товар добавлен ✓')));
     } else {
       final e = ref.read(cabinetControllerProvider).error;
       setState(() => _error = e.toString().replaceFirst('Failure: ', ''));
@@ -132,8 +200,8 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Новый товар',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            Text(_editing ? 'Изменить товар' : 'Новый товар',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 16),
             TextField(
               controller: _name,
