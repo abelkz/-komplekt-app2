@@ -18,7 +18,10 @@ class StorageRepository {
     final uid = supabase.auth.currentUser?.id;
     if (uid == null) throw const Failure('Войдите, чтобы загрузить фото');
 
-    final rand = Random().nextInt(1 << 32).toRadixString(16);
+    // Литерал, а не 1 << 32: в вебе Dart компилируется в JavaScript, где
+    // сдвиг считается по 32 битам и 1 << 32 обращается в ноль — отсюда была
+    // ошибка «max must be in range 0 < max ≤ 2^32, was 0».
+    final rand = Random().nextInt(0x7FFFFFFF).toRadixString(16);
     final path =
         '$uid/${DateTime.now().millisecondsSinceEpoch}_$rand.$ext';
     final contentType = ext == 'png' ? 'image/png' : 'image/jpeg';
@@ -31,6 +34,10 @@ class StorageRepository {
           );
       return supabase.storage.from(_bucket).getPublicUrl(path);
     } catch (e) {
+      if (e.toString().contains('Bucket not found')) {
+        throw const Failure(
+            'Хранилище фото не создано — примените миграцию 0011 в Supabase');
+      }
       throw mapError(e, fallback: 'Не удалось загрузить фото');
     }
   }

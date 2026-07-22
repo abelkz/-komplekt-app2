@@ -6,6 +6,7 @@ import '../../../core/providers/settings_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/tape_stripe.dart';
+import '../data/auth_repository.dart';
 import 'auth_providers.dart';
 
 /// Экран 2 — авторизация: email (вход/регистрация) или телефон (SMS-код).
@@ -28,9 +29,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
   final _phone = TextEditingController();
-  final _otp = TextEditingController();
+  final _otp = TextEditingController(); // задел под SMS-код, когда подключим провайдера
 
-  bool _otpSent = false;
+  // ignore: unused_field
+  bool _otpSent = false; // пригодится, когда появится SMS/WhatsApp-провайдер
   String? _error;
 
   @override
@@ -155,30 +157,38 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
+  /// Переключатель Вход / Регистрация — общий для обоих способов входа.
+  Widget _modeSwitch(AppColors c) => Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: c.field,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+        ),
+        child: Row(
+          children: [
+            _Segment(
+              label: 'Вход',
+              selected: _mode == _Mode.login,
+              onTap: () => setState(() {
+                _mode = _Mode.login;
+                _error = null;
+              }),
+            ),
+            _Segment(
+              label: 'Регистрация',
+              selected: _mode == _Mode.register,
+              onTap: () => setState(() {
+                _mode = _Mode.register;
+                _error = null;
+              }),
+            ),
+          ],
+        ),
+      );
+
   // ── Форма email ──
   List<Widget> _emailForm(AppColors c) => [
-        // переключатель Вход / Регистрация
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: c.field,
-            borderRadius: BorderRadius.circular(AppRadii.md),
-          ),
-          child: Row(
-            children: [
-              _Segment(
-                label: 'Вход',
-                selected: _mode == _Mode.login,
-                onTap: () => setState(() => _mode = _Mode.login),
-              ),
-              _Segment(
-                label: 'Регистрация',
-                selected: _mode == _Mode.register,
-                onTap: () => setState(() => _mode = _Mode.register),
-              ),
-            ],
-          ),
-        ),
+        _modeSwitch(c),
         const SizedBox(height: 16),
         if (_mode == _Mode.register) ...[
           _label('Имя'),
@@ -205,64 +215,86 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         ),
       ];
 
-  // ── Форма телефона (SMS-код) ──
+  // ── Форма телефона ──
+  // Вход по номеру и паролю, без SMS: номер превращается в служебный email
+  // <11 цифр>@example.com. Ровно так же работает веб-кабинет поставщика,
+  // поэтому аккаунт один и тот же в приложении и на supplier.html.
   List<Widget> _phoneForm(AppColors c) => [
+        _modeSwitch(c),
+        const SizedBox(height: 16),
+        if (_mode == _Mode.register) ...[
+          _label('Имя'),
+          TextField(
+            controller: _name,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(hintText: 'Имя Фамилия'),
+          ),
+          const SizedBox(height: 14),
+        ],
         _label('Телефон'),
         TextField(
           controller: _phone,
           keyboardType: TextInputType.phone,
-          enabled: !_otpSent,
           decoration: const InputDecoration(hintText: '+7 7XX XXX XX XX'),
         ),
-        if (_otpSent) ...[
-          const SizedBox(height: 14),
-          _label('Код из SMS'),
-          TextField(
-            controller: _otp,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: '6 цифр'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => setState(() => _otpSent = false),
-            child: const Text('Изменить номер'),
-          ),
-        ],
+        const SizedBox(height: 14),
+        _label('Пароль'),
+        TextField(
+          controller: _pass,
+          obscureText: true,
+          decoration: const InputDecoration(hintText: 'минимум 6 символов'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Код в SMS не приходит — вход по номеру и паролю. '
+          'Тот же аккаунт работает в кабинете поставщика на сайте.',
+          style: TextStyle(fontSize: 12, color: c.faint, height: 1.35),
+        ),
       ];
 
-  String _primaryLabel() {
-    if (_method == _Method.phone) {
-      return _otpSent ? 'Подтвердить код' : 'Получить код';
-    }
-    return _mode == _Mode.login ? 'Войти' : 'Зарегистрироваться';
-  }
+  String _primaryLabel() =>
+      _mode == _Mode.login ? 'Войти' : 'Зарегистрироваться';
 
   Future<void> _submit() async {
     setState(() => _error = null);
     final ctrl = ref.read(authControllerProvider.notifier);
     final city = ref.read(settingsProvider).city;
 
-    bool ok;
+    // По какому логину входим: обычный email или служебный из номера
+    final String login;
     if (_method == _Method.phone) {
-      final phone = _phone.text.trim();
-      if (!_otpSent) {
-        ok = await ctrl.sendOtp(phone);
-        if (ok) setState(() => _otpSent = true);
-      } else {
-        ok = await ctrl.verifyOtp(phone, _otp.text.trim());
+      final mapped = AuthRepository.phoneToEmail(_phone.text);
+      if (mapped == null) {
+        setState(() =>
+            _error = 'Укажите номер в формате +7 7XX XXX XX XX');
+        return;
       }
-    } else if (_mode == _Mode.register) {
+      login = mapped;
+    } else {
+      login = _email.text.trim();
+      if (!login.contains('@')) {
+        setState(() => _error = 'Укажите корректный email');
+        return;
+      }
+    }
+    if (_pass.text.length < 6) {
+      setState(() => _error = 'Пароль должен быть не короче 6 символов');
+      return;
+    }
+
+    bool ok;
+    if (_mode == _Mode.register) {
       ok = await ctrl.signUp(
-        email: _email.text.trim(),
+        email: login,
         password: _pass.text,
         fullName: _name.text.trim(),
         city: city,
         phone: _phone.text.trim(),
       );
       // Сразу входим (если в Supabase отключено подтверждение email)
-      if (ok) ok = await ctrl.signIn(_email.text.trim(), _pass.text);
+      if (ok) ok = await ctrl.signIn(login, _pass.text);
     } else {
-      ok = await ctrl.signIn(_email.text.trim(), _pass.text);
+      ok = await ctrl.signIn(login, _pass.text);
     }
 
     if (!ok && mounted) {

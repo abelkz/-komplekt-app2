@@ -85,7 +85,27 @@ class AuthRepository {
     }
   }
 
-  /// Телефонная авторизация: шаг 1 — отправка SMS-кода.
+  /// Номер телефона → служебный email для Supabase Auth.
+  ///
+  /// SMS-провайдер не подключён (и стоит денег), поэтому вход по номеру
+  /// сделан через пароль: номер превращается в `<11 цифр>@example.com`.
+  /// Домен example.com зарезервирован RFC 2606 — Supabase принимает его
+  /// при проверке MX-записей, в отличие от выдуманных доменов.
+  /// Ровно та же схема в веб-кабинете supplier.html — аккаунт общий.
+  ///
+  /// Возвращает null, если номер не похож на казахстанский.
+  static String? phoneToEmail(String raw) {
+    final input = raw.trim();
+    if (input.contains('@')) return input; // уже email
+    var d = input.replaceAll(RegExp(r'\D'), '');
+    if (d.length == 11 && d.startsWith('8')) d = '7${d.substring(1)}';
+    if (d.length == 10) d = '7$d';
+    if (d.length != 11) return null;
+    return '$d@example.com';
+  }
+
+  /// Телефонная авторизация по SMS-коду: шаг 1 — отправка кода.
+  /// Требует подключённого SMS-провайдера в Supabase (Twilio и т.п.).
   Future<void> sendPhoneOtp(String phone) async {
     try {
       await supabase.auth.signInWithOtp(phone: phone);
