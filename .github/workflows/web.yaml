@@ -62,7 +62,12 @@ jobs:
       - name: Build web
         # base-href обязан совпадать с именем репозитория, иначе на Pages
         # не подгрузятся скрипты и будет белый экран.
-        run: flutter build web --release --base-href "/-komplekt-app2/"
+        # BUILD_TAG виден внизу экрана «Профиль» — по нему сразу понятно,
+        # открыта свежая версия или старая из кэша браузера.
+        run: |
+          flutter build web --release \
+            --base-href "/-komplekt-app2/" \
+            --dart-define=BUILD_TAG="${GITHUB_SHA::7}"
 
       - uses: actions/upload-pages-artifact@v3
         with:

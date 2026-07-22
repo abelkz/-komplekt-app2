@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/build_info.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
@@ -159,6 +160,12 @@ class ProfileScreen extends ConsumerWidget {
               style: TextButton.styleFrom(foregroundColor: c.red),
               onPressed: () => _deleteAccountDialog(context, ref),
               child: const Text('Удалить аккаунт'),
+            ),
+            const SizedBox(height: 12),
+            // По этой строке видно, свежая версия открыта или старая из кэша
+            Center(
+              child: Text(BuildInfo.label,
+                  style: TextStyle(fontSize: 11, color: c.faint)),
             ),
           ],
         ),

@@ -8,6 +8,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../catalog/domain/offer.dart';
+import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/widgets/product_thumb.dart';
 import '../data/spec_export.dart';
 import '../domain/collection.dart';
@@ -395,6 +397,53 @@ class _ItemRow extends ConsumerWidget {
     final best = p.bestOffer;
     final notifier = ref.read(collectionsProvider.notifier);
 
+    // Смахивание влево удаляет позицию из подборки. Действие обратимое —
+    // в снекбаре есть «Вернуть», поэтому подтверждение не спрашиваем.
+    return Dismissible(
+      key: ValueKey('item-$collectionId-${item.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 11),
+        padding: const EdgeInsets.only(right: 22),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: c.red,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white, size: 26),
+      ),
+      onDismissed: (_) => _remove(context, ref, notifier),
+      child: _card(context, c, ref, p, best, notifier),
+    );
+  }
+
+  Future<void> _remove(
+      BuildContext context, WidgetRef ref, CollectionsNotifier notifier) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final qty = item.qty;
+    try {
+      await notifier.removeItem(collectionId, item.productId);
+      messenger.showSnackBar(SnackBar(
+        content: Text('${item.product?.name ?? 'Позиция'} убрана'),
+        action: SnackBarAction(
+          label: 'Вернуть',
+          onPressed: () => notifier
+              .addTo(collectionId, item.productId)
+              .then((_) => notifier.setQty(collectionId, item.productId, qty))
+              .catchError((_) {}),
+        ),
+      ));
+    } catch (e) {
+      final t = e.toString();
+      messenger.showSnackBar(SnackBar(
+          content: Text(t.startsWith('Failure: ')
+              ? t.substring(9)
+              : 'Не удалось убрать позицию')));
+    }
+  }
+
+  Widget _card(BuildContext context, AppColors c, WidgetRef ref, Product p,
+      Offer? best, CollectionsNotifier notifier) {
     return Container(
       margin: const EdgeInsets.only(bottom: 11),
       padding: const EdgeInsets.all(12),

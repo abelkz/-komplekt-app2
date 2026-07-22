@@ -100,7 +100,7 @@ jobs:
 
       - name: Build for iOS Simulator
         # Симулятор не требует подписи — поэтому сборка бесплатна.
-        run: flutter build ios --simulator --debug
+        run: flutter build ios --simulator --debug --dart-define=BUILD_TAG="${GITHUB_SHA:0:7}"
 
       - name: Package .app
         run: |

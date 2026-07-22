@@ -116,7 +116,8 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? const [];
+    final catsAsync = ref.watch(categoriesProvider);
+    final categories = catsAsync.valueOrNull ?? const [];
     final loading = ref.watch(cabinetControllerProvider).isLoading;
 
     return Padding(
@@ -163,15 +164,44 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _category,
-              decoration: const InputDecoration(labelText: 'Категория *'),
-              items: [
-                for (final cat in categories)
-                  DropdownMenuItem(value: cat.slug, child: Text(cat.name)),
-              ],
-              onChanged: (v) => setState(() => _category = v),
-            ),
+            // Пока категории не загрузились, список пуст и выпадашка мертва —
+            // поэтому показываем, что именно происходит, и даём повторить.
+            if (categories.isEmpty)
+              InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'Категория *',
+                  errorText: catsAsync.hasError
+                      ? 'Не удалось загрузить категории'
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        catsAsync.isLoading
+                            ? 'Загружаю категории…'
+                            : 'Категорий нет',
+                        style: TextStyle(color: context.colors.gray),
+                      ),
+                    ),
+                    if (!catsAsync.isLoading)
+                      TextButton(
+                        onPressed: () => ref.invalidate(categoriesProvider),
+                        child: const Text('Повторить'),
+                      ),
+                  ],
+                ),
+              )
+            else
+              DropdownButtonFormField<String>(
+                value: _category,
+                decoration: const InputDecoration(labelText: 'Категория *'),
+                items: [
+                  for (final cat in categories)
+                    DropdownMenuItem(value: cat.slug, child: Text(cat.name)),
+                ],
+                onChanged: (v) => setState(() => _category = v),
+              ),
             const SizedBox(height: 12),
             Row(
               children: [
