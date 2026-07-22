@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
 import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
@@ -48,6 +50,38 @@ class AuthRepository {
           .signInWithPassword(email: email, password: password);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось войти');
+    }
+  }
+
+  /// Вход через Google / Apple.
+  ///
+  /// В вебе Supabase возвращает пользователя обратно на ту же страницу
+  /// (её адрес обязательно должен быть в Auth → URL Configuration →
+  /// Redirect URLs). На телефоне открывается системный браузер и возврат
+  /// идёт по схеме kz.komplekt.app://login-callback — она прописывается
+  /// в AndroidManifest.xml и Info.plist при сборке.
+  static const oauthRedirectScheme = 'kz.komplekt.app://login-callback';
+
+  Future<void> signInWithProvider(OAuthProvider provider) async {
+    try {
+      await supabase.auth.signInWithOAuth(
+        provider,
+        redirectTo: kIsWeb
+            ? '${Uri.base.origin}${Uri.base.path}'
+            : oauthRedirectScheme,
+        authScreenLaunchMode:
+            kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      final text = e.toString();
+      // Провайдер не включён в Supabase — самая частая причина
+      if (text.contains('not enabled') ||
+          text.contains('Unsupported provider')) {
+        throw Failure(provider == OAuthProvider.apple
+            ? 'Вход через Apple ещё не подключён в Supabase'
+            : 'Вход через Google ещё не подключён в Supabase');
+      }
+      throw mapError(e, fallback: 'Не удалось начать вход');
     }
   }
 

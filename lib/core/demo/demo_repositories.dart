@@ -78,6 +78,9 @@ class DemoAuthRepository extends AuthRepository {
   }) async {}
 
   @override
+  Future<void> signInWithProvider(OAuthProvider provider) async {}
+
+  @override
   Future<void> sendPhoneOtp(String phone) async {}
 
   @override

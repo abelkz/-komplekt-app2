@@ -1,21 +1,18 @@
 import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
+import '../../catalog/data/catalog_repository.dart';
 import '../domain/collection.dart';
 
 /// Подборки/проекты пользователя и позиции в них.
+/// В живой базе таблицы называются projects и project_items.
 class CollectionsRepository {
   const CollectionsRepository();
 
   String? get _uid => supabase.auth.currentUser?.id;
 
-  static const _select =
-      'id,name,created_at,'
+  static const _select = 'id,name,created_at,'
       'project_items(id,product_id,qty,'
-      'products(id,name,sku,unit,color,image_url,rating,category_slug,'
-      'brands(name),'
-      'product_images(url,sort),'
-      'offers(id,price,in_stock,price_updated_at,supplier_id,'
-      'suppliers(name,city,phone,whatsapp,website))))';
+      'products(${CatalogRepository.productSelect}))';
 
   /// Все подборки пользователя.
   Future<List<Collection>> list() async {
@@ -74,17 +71,33 @@ class CollectionsRepository {
     }
   }
 
+  /// Добавить товар. Upsert не используем: он требует уникального индекса
+  /// (project_id, product_id), которого в живой базе может не быть —
+  /// вместо этого сами проверяем, есть ли уже такая позиция.
   Future<void> addItem({
     required String collectionId,
     required String productId,
     double qty = 1,
   }) async {
     try {
-      await supabase.from('project_items').upsert({
-        'project_id': collectionId,
-        'product_id': productId,
-        'qty': qty,
-      }, onConflict: 'project_id,product_id');
+      final existing = await supabase
+          .from('project_items')
+          .select('id,qty')
+          .eq('project_id', collectionId)
+          .eq('product_id', productId)
+          .maybeSingle();
+      if (existing == null) {
+        await supabase.from('project_items').insert({
+          'project_id': collectionId,
+          'product_id': productId,
+          'qty': qty,
+        });
+      } else {
+        await supabase
+            .from('project_items')
+            .update({'qty': ((existing['qty'] as num?)?.toDouble() ?? 0) + qty})
+            .eq('id', existing['id']);
+      }
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось добавить в подборку');
     }

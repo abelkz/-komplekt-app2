@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/theme/app_colors.dart';
@@ -109,6 +110,40 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     strokeWidth: 2, color: AppColors.brandInk))
                             : Text(_primaryLabel()),
                       ),
+                    ),
+
+                    // ── Вход через Google / Apple ──
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: c.line)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('ИЛИ',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  letterSpacing: 1.2,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.gray)),
+                        ),
+                        Expanded(child: Divider(color: c.line)),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _ProviderButton(
+                      label: 'Продолжить с Google',
+                      icon: const _GoogleMark(),
+                      onTap: loading
+                          ? null
+                          : () => _oauth(OAuthProvider.google),
+                    ),
+                    const SizedBox(height: 10),
+                    _ProviderButton(
+                      label: 'Продолжить с Apple',
+                      icon: Icon(Icons.apple, size: 20, color: c.ink),
+                      onTap: loading
+                          ? null
+                          : () => _oauth(OAuthProvider.apple),
                     ),
                   ],
                 ),
@@ -237,6 +272,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     // При успехе redirect в роутере сам переведёт на главную.
   }
 
+  /// Вход через внешнего провайдера (Google / Apple).
+  Future<void> _oauth(OAuthProvider provider) async {
+    setState(() => _error = null);
+    final ok =
+        await ref.read(authControllerProvider.notifier).signInWithProvider(provider);
+    if (!ok && mounted) {
+      final err = ref.read(authControllerProvider).error;
+      setState(() => _error = err is Object ? _msg(err) : 'Не удалось войти');
+    }
+  }
+
   String _msg(Object e) {
     final t = e.toString();
     return t.startsWith('Failure: ') ? t.substring(9) : t;
@@ -251,6 +297,93 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 fontWeight: FontWeight.w700,
                 color: context.colors.gray)),
       );
+}
+
+/// Кнопка входа через внешнего провайдера.
+class _ProviderButton extends StatelessWidget {
+  const _ProviderButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+  final String label;
+  final Widget icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          side: BorderSide(color: c.line),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.sm)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            icon,
+            const SizedBox(width: 10),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: c.ink)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Фирменная разноцветная «G» — нарисована кодом, без картинок в ассетах.
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 20,
+        height: 20,
+        child: CustomPaint(painter: _GooglePainter()),
+      );
+}
+
+class _GooglePainter extends CustomPainter {
+  static const _blue = Color(0xFF4285F4);
+  static const _red = Color(0xFFEA4335);
+  static const _yellow = Color(0xFFFBBC05);
+  static const _green = Color(0xFF34A853);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final stroke = size.width * 0.22;
+    final arc = Rect.fromCircle(
+        center: rect.center, radius: (size.width - stroke) / 2);
+    final p = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+
+    // четыре дуги по 90° в фирменных цветах
+    canvas.drawArc(arc, -0.35, 1.25, false, p..color = _blue);
+    canvas.drawArc(arc, 0.95, 1.35, false, p..color = _green);
+    canvas.drawArc(arc, 2.35, 1.35, false, p..color = _yellow);
+    canvas.drawArc(arc, 3.75, 1.55, false, p..color = _red);
+
+    // перекладина буквы G
+    canvas.drawLine(
+      Offset(size.width * 0.52, size.height / 2),
+      Offset(size.width * 0.98, size.height / 2),
+      Paint()
+        ..color = _blue
+        ..strokeWidth = stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _MethodChip extends StatelessWidget {

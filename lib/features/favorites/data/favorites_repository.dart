@@ -1,5 +1,8 @@
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+
 import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
+import '../../catalog/data/catalog_repository.dart';
 import '../../catalog/domain/product.dart';
 
 /// Избранное пользователя.
@@ -24,16 +27,16 @@ class FavoritesRepository {
   }
 
   /// Избранные товары целиком (с ценами/фото) — для экрана «Избранное».
+  /// Набор полей берём из каталога: в живой базе нет колонки products.brand,
+  /// марка приезжает вложенным объектом brands(name).
   Future<List<Product>> products() async {
     final uid = _uid;
     if (uid == null) return [];
     try {
-      final rows = await supabase.from('favorites').select(
-            'products(id,name,sku,unit,color,rating,category_slug,brand,'
-            'product_images(url,sort),'
-            'offers(id,price,in_stock,price_updated_at,supplier_id,'
-            'suppliers(name,city,phone,whatsapp,website)))',
-          ).eq('user_id', uid);
+      final rows = await supabase
+          .from('favorites')
+          .select('products(${CatalogRepository.productSelect})')
+          .eq('user_id', uid);
       return rows
           .map((m) => m['products'])
           .whereType<Map<String, dynamic>>()
@@ -50,7 +53,11 @@ class FavoritesRepository {
     try {
       await supabase
           .from('favorites')
-          .upsert({'user_id': uid, 'product_id': productId});
+          .insert({'user_id': uid, 'product_id': productId});
+    } on PostgrestException catch (e) {
+      // 23505 — товар уже в избранном, это не ошибка для пользователя
+      if (e.code == '23505') return;
+      throw mapError(e, fallback: 'Не сохранилось');
     } catch (e) {
       throw mapError(e, fallback: 'Не сохранилось');
     }

@@ -43,17 +43,18 @@ class CollectionsScreen extends ConsumerWidget {
               child: AsyncValueView<List<Collection>>(
                 value: collections,
                 onRetry: () => ref.invalidate(collectionsProvider),
-                isEmpty: (d) => d.isEmpty || d.every((c) => c.items.isEmpty),
+                isEmpty: (d) => d.isEmpty,
                 empty: const EmptyState(
-                  title: 'Подборка пуста',
-                  subtitle: 'Найдите товар и добавьте его в подборку.',
+                  title: 'Подборок пока нет',
+                  subtitle: 'Нажмите + и создайте первую подборку.',
                   icon: Icons.layers_outlined,
                 ),
+                // Показываем и пустые подборки — иначе после создания
+                // на экране ничего не появляется и кажется, что зависло.
                 data: (list) => ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
-                    for (final col in list.where((c) => c.items.isNotEmpty))
-                      _CollectionBlock(collection: col),
+                    for (final col in list) _CollectionBlock(collection: col),
                   ],
                 ),
               ),
@@ -64,33 +65,66 @@ class CollectionsScreen extends ConsumerWidget {
     );
   }
 
-  void _createDialog(BuildContext context, WidgetRef ref) {
-    final ctrl = TextEditingController();
-    showDialog(
+  /// Диалог «Новая подборка».
+  /// Создание ждём и ошибку показываем: раньше исключение из create()
+  /// никто не ловил — на вебе это роняло кадр и экран оставался пустым.
+  Future<void> _createDialog(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final name = await showDialog<String>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Новая подборка'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Например: Кафе · Атырау'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена')),
-          FilledButton(
-            onPressed: () {
-              final name = ctrl.text.trim();
-              if (name.isNotEmpty) {
-                ref.read(collectionsProvider.notifier).create(name);
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('Создать'),
-          ),
-        ],
+      builder: (_) => const _NewCollectionDialog(),
+    );
+    if (name == null || name.isEmpty) return;
+
+    try {
+      await ref.read(collectionsProvider.notifier).create(name);
+      messenger.showSnackBar(SnackBar(content: Text('Подборка «$name» создана')));
+    } catch (e) {
+      final t = e.toString();
+      messenger.showSnackBar(SnackBar(
+        content: Text(t.startsWith('Failure: ')
+            ? t.substring(9)
+            : 'Не удалось создать подборку'),
+      ));
+    }
+  }
+}
+
+/// Отдельный виджет — чтобы контроллер поля корректно освобождался.
+class _NewCollectionDialog extends StatefulWidget {
+  const _NewCollectionDialog();
+
+  @override
+  State<_NewCollectionDialog> createState() => _NewCollectionDialogState();
+}
+
+class _NewCollectionDialogState extends State<_NewCollectionDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _ctrl.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Новая подборка'),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+        decoration: const InputDecoration(hintText: 'Например: Кафе · Атырау'),
       ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+        FilledButton(onPressed: _submit, child: const Text('Создать')),
+      ],
     );
   }
 }
@@ -126,60 +160,80 @@ class _CollectionBlock extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 12),
-        for (final item in collection.items)
-          _ItemRow(collectionId: collection.id, item: item),
-        const SizedBox(height: 8),
-        // Итог
-        // Итог документа: жирная линейка, моно-подпись и крупная сумма
-        Container(
-          padding: const EdgeInsets.only(top: 18, bottom: 4),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: c.ink, width: 1.5)),
+
+        // Пустая подборка: подсказка вместо итога и кнопок экспорта
+        if (collection.items.isEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+            decoration: BoxDecoration(
+              border: Border.all(color: c.line),
+              borderRadius: BorderRadius.circular(AppRadii.md),
+            ),
+            child: Text(
+              'Пока пусто. Найдите товар и добавьте его в эту подборку.',
+              style: TextStyle(fontSize: 13, color: c.gray),
+            ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          const SizedBox(height: 24),
+        ],
+
+        if (collection.items.isNotEmpty) ...[
+          for (final item in collection.items)
+            _ItemRow(collectionId: collection.id, item: item),
+          const SizedBox(height: 8),
+          // Итог
+          // Итог документа: жирная линейка, моно-подпись и крупная сумма
+          Container(
+            padding: const EdgeInsets.only(top: 18, bottom: 4),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: c.ink, width: 1.5)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text('ИТОГО ПО ЛУЧШИМ ЦЕНАМ',
+                      style: AppTypography.sectionLabel(color: c.gray)),
+                ),
+                const SizedBox(width: 10),
+                Text(Formatters.price(collection.total),
+                    style: AppTypography.unbounded(size: 26, color: c.ink)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
             children: [
               Expanded(
-                child: Text('ИТОГО ПО ЛУЧШИМ ЦЕНАМ',
-                    style: AppTypography.sectionLabel(color: c.gray)),
+                child: _ExportButton(
+                  icon: Icons.content_copy,
+                  label: 'Скопировать',
+                  onTap: () => _copySpec(context, collection),
+                ),
               ),
-              const SizedBox(width: 10),
-              Text(Formatters.price(collection.total),
-                  style: AppTypography.unbounded(size: 26, color: c.ink)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: _ExportButton(
+                  icon: Icons.grid_on,
+                  label: 'Excel',
+                  onTap: () => _export(
+                      context, (o) => SpecExport.exportExcel(collection, shareOrigin: o)),
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: _ExportButton(
+                  icon: Icons.picture_as_pdf_outlined,
+                  label: 'PDF',
+                  onTap: () => _export(
+                      context, (o) => SpecExport.exportPdf(collection, shareOrigin: o)),
+                ),
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _ExportButton(
-                icon: Icons.content_copy,
-                label: 'Скопировать',
-                onTap: () => _copySpec(context, collection),
-              ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: _ExportButton(
-                icon: Icons.grid_on,
-                label: 'Excel',
-                onTap: () => _export(
-                    context, (o) => SpecExport.exportExcel(collection, shareOrigin: o)),
-              ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: _ExportButton(
-                icon: Icons.picture_as_pdf_outlined,
-                label: 'PDF',
-                onTap: () => _export(
-                    context, (o) => SpecExport.exportPdf(collection, shareOrigin: o)),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
+          const SizedBox(height: 24),
+        ],
       ],
     );
   }

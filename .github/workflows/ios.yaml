@@ -63,6 +63,13 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$P"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string tel" "$P"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string whatsapp" "$P"
+          # Возврат из браузера после входа через Google/Apple
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleTypeRole string Editor" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string kz.komplekt.app" "$P"
           echo "── Итоговый Info.plist ──"
           /usr/libexec/PlistBuddy -c "Print" "$P"
 

@@ -46,6 +46,11 @@ class AuthController extends AsyncNotifier<void> {
             phone: phone,
           ));
 
+  /// Вход через Google / Apple. Дальше пользователя уводит браузер,
+  /// а возврат ловит Supabase — роутер сам перебросит на главную.
+  Future<bool> signInWithProvider(OAuthProvider provider) => _run(() =>
+      ref.read(authRepositoryProvider).signInWithProvider(provider));
+
   Future<bool> sendOtp(String phone) =>
       _run(() => ref.read(authRepositoryProvider).sendPhoneOtp(phone));
 

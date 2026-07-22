@@ -51,10 +51,12 @@ class Collection {
 
   double get total => items.fold(0, (s, i) => s + i.sum);
 
+  /// Позиции приезжают из таблицы project_items (так она названа в живой
+  /// базе). Старое имя collection_items оставлено для совместимости.
   factory Collection.fromMap(Map<String, dynamic> m) => Collection(
         id: m['id'].toString(),
         name: m['name'] as String? ?? 'Мой проект',
-        items: (m['collection_items'] as List?)
+        items: ((m['project_items'] ?? m['collection_items']) as List?)
                 ?.map((e) => CollectionItem.fromMap(e as Map<String, dynamic>))
                 .toList() ??
             const [],

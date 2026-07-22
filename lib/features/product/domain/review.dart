@@ -15,7 +15,7 @@ class Review {
   final DateTime? createdAt;
 
   factory Review.fromMap(Map<String, dynamic> m) {
-    final user = m['users'];
+    final user = m['profiles'] ?? m['users'];
     final author =
         user is Map<String, dynamic> ? (user['full_name'] as String?) : null;
     return Review(

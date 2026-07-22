@@ -21,11 +21,49 @@ jobs:
         with:
           channel: stable
 
-      - name: Prepare .env (demo)
-        run: cp .env.example .env
+      - name: Prepare .env
+        # Есть секреты Supabase — собираем APK с реальной базой,
+        # нет — остаёмся в демо-режиме, чтобы сборка не падала.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            {
+              echo "SUPABASE_URL=$SUPABASE_URL"
+              echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+              echo "DEMO_MODE=false"
+              echo "DEFAULT_CITY=Астана"
+              echo "DEFAULT_LAT=51.1280"
+              echo "DEFAULT_LNG=71.4304"
+            } > .env
+            echo "→ собран .env с реальной базой"
+          else
+            cp .env.example .env
+            echo "→ секреты не заданы, демо-режим"
+          fi
 
       - name: Generate platform folders
         run: flutter create . --platforms=android
+
+      - name: Patch Android manifest (возврат после входа Google/Apple)
+        run: |
+          python3 - <<'PY'
+          path = 'android/app/src/main/AndroidManifest.xml'
+          xml = open(path, encoding='utf-8').read()
+          if 'login-callback' not in xml:
+              block = (
+                  '        <intent-filter>\n'
+                  '            <action android:name="android.intent.action.VIEW" />\n'
+                  '            <category android:name="android.intent.category.DEFAULT" />\n'
+                  '            <category android:name="android.intent.category.BROWSABLE" />\n'
+                  '            <data android:scheme="kz.komplekt.app" android:host="login-callback" />\n'
+                  '        </intent-filter>\n'
+              )
+              xml = xml.replace('</activity>', block + '        </activity>', 1)
+              open(path, 'w', encoding='utf-8').write(xml)
+              print('→ intent-filter добавлен')
+          PY
 
       - name: Patch Android config
         run: |
