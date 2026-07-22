@@ -53,6 +53,8 @@ dependencies:
   pdf: ^3.11.1            # генерация PDF
   printing: ^5.13.2       # шрифты с кириллицей + системный «Поделиться» для PDF
   excel: ^4.0.6           # генерация и чтение .xlsx (импорт прайса)
+  archive: ^3.6.1         # свой разбор .xlsx: пакет excel падает на части файлов
+  xml: ^6.5.0             # (см. lib/features/supplier_cabinet/data/xlsx_reader.dart)
   file_picker: ^8.1.2     # выбор файла прайса
   image_picker: ^1.1.2    # фото товара из галереи/камеры
   share_plus: ^10.0.2     # отправка файла (Excel) в другие приложения

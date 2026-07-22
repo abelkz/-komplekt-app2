@@ -56,6 +56,11 @@ jobs:
         # web/ в репозитории не хранится — генерируем, как android/ и ios/
         run: flutter create . --platforms=web
 
+      - name: Заставка на время загрузки
+        # Без неё Safari несколько секунд показывает пустой чёрный экран.
+        # Разметка — в web_splash.html, скрипт вшивает её в index.html.
+        run: python3 tool/inject_splash.py
+
       - name: Install dependencies
         run: flutter pub get
 

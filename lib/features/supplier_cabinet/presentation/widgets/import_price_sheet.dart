@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../catalog/presentation/catalog_providers.dart';
 import '../../data/supplier_cabinet_repository.dart';
+import '../../data/xlsx_reader.dart';
 import '../supplier_cabinet_providers.dart';
 
 Future<void> showImportPriceSheet(BuildContext context, String supplierId) {
@@ -70,26 +71,58 @@ class _ImportPriceSheetState extends ConsumerState<_ImportPriceSheet> {
     }
   }
 
+  /// Разбор .xlsx.
+  ///
+  /// Сначала собственным читателем: пакет `excel` разбирает файл целиком,
+  /// включая оформление, и на прайсах из реальных программ падает
+  /// с «Damaged Excel file: styles», хотя данные в порядке.
+  /// Пакет оставлен запасным вариантом — вдруг попадётся файл, который
+  /// он поймёт, а наш читатель нет.
   bool _parseExcel(List<int> bytes) {
-    final excel = Excel.decodeBytes(bytes);
-    final sheet = excel.tables.values.first;
-    final all = sheet.rows;
-    if (all.length < 2) {
+    List<List<String>>? table;
+    try {
+      table = XlsxReader.read(bytes);
+    } catch (_) {
+      table = null;
+    }
+
+    if (table == null || table.length < 2) {
+      try {
+        final excel = Excel.decodeBytes(bytes);
+        final all = excel.tables.values.first.rows;
+        table = [
+          for (final r in all)
+            [for (final cell in r) cell?.value?.toString() ?? ''],
+        ];
+      } catch (e) {
+        _error = 'Не удалось прочитать этот .xlsx. Откройте его в Excel '
+            'и сохраните как CSV — такой файл читается всегда.';
+        return false;
+      }
+    }
+
+    // выкидываем полностью пустые строки — их в прайсах обычно много
+    table = table
+        .where((r) => r.any((cell) => cell.trim().isNotEmpty))
+        .toList();
+
+    if (table.length < 2) {
       _error = 'В файле нет данных (нужны заголовки и хотя бы одна строка)';
       return false;
     }
+
     _headers = [
-      for (var i = 0; i < all.first.length; i++)
+      for (var i = 0; i < table.first.length; i++)
         () {
-          final v = all.first[i]?.value?.toString().trim() ?? '';
+          final v = table!.first[i].trim();
           return v.isEmpty ? 'Колонка ${i + 1}' : v;
         }(),
     ];
-    _rows = all
+    _rows = table
         .skip(1)
         .map((r) => [
               for (var i = 0; i < _headers.length; i++)
-                (i < r.length ? r[i]?.value?.toString() ?? '' : '')
+                (i < r.length ? r[i] : '')
             ])
         .toList();
     return true;
