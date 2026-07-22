@@ -27,6 +27,23 @@ class CollectionsNotifier extends AsyncNotifier<List<Collection>> {
     return col.name;
   }
 
+  /// Добавить товар в конкретную подборку (выбранную пользователем).
+  Future<void> addTo(String collectionId, String productId) async {
+    await ref
+        .read(collectionsRepositoryProvider)
+        .addItem(collectionId: collectionId, productId: productId);
+    await _reload();
+  }
+
+  /// Создать подборку и сразу положить в неё товар.
+  Future<String> createWith(String name, String productId) async {
+    final repo = ref.read(collectionsRepositoryProvider);
+    final id = await repo.create(name);
+    await repo.addItem(collectionId: id, productId: productId);
+    await _reload();
+    return id;
+  }
+
   Future<void> setQty(
       String collectionId, String productId, double qty) async {
     await ref.read(collectionsRepositoryProvider).setQty(

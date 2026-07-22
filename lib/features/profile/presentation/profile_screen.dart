@@ -100,10 +100,10 @@ class ProfileScreen extends ConsumerWidget {
               ),
               _MenuItemData(
                 'Настройки уведомлений',
-                profile.valueOrNull?.notifyEnabled == false
-                    ? 'выкл'
-                    : 'порог ${profile.valueOrNull?.notifyThreshold ?? 1}%',
-                onTap: () => _notifyDialog(context, ref, profile.valueOrNull),
+                settings.notifyEnabled
+                    ? 'порог ${settings.notifyThreshold}%'
+                    : 'выкл',
+                onTap: () => _notifyDialog(context, ref),
               ),
               _MenuItemData('История поиска', '$recentCount запросов'),
               _MenuItemData(
@@ -166,9 +166,10 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  void _notifyDialog(BuildContext context, WidgetRef ref, dynamic profile) {
-    bool enabled = profile?.notifyEnabled ?? true;
-    int threshold = profile?.notifyThreshold ?? 1;
+  void _notifyDialog(BuildContext context, WidgetRef ref) {
+    final saved = ref.read(settingsProvider);
+    bool enabled = saved.notifyEnabled;
+    int threshold = saved.notifyThreshold;
     const options = [1, 5, 10, 20];
 
     showModalBottomSheet(
@@ -214,11 +215,21 @@ class ProfileScreen extends ConsumerWidget {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: () async {
-                      await ref.read(authRepositoryProvider).updateNotifyPrefs(
+                      // Сначала сохраняем на устройстве — это не может
+                      // не сработать, выбор пользователя не теряется.
+                      ref.read(settingsProvider.notifier).setNotifyPrefs(
                             enabled: enabled,
                             threshold: threshold,
                           );
-                      ref.invalidate(myProfileProvider);
+                      // Затем пробуем записать в профиль. Если в базе ещё
+                      // нет колонок, приложение продолжает работать.
+                      try {
+                        await ref
+                            .read(authRepositoryProvider)
+                            .updateNotifyPrefs(
+                                enabled: enabled, threshold: threshold);
+                        ref.invalidate(myProfileProvider);
+                      } catch (_) {/* настройка осталась локальной */}
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Сохранить'),

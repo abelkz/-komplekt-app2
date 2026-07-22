@@ -90,6 +90,44 @@ class CollectionsScreen extends ConsumerWidget {
   }
 }
 
+/// Переименование: то же поле ввода, но с текущим названием.
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initial});
+  final String initial;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final _ctrl = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _ctrl.text.trim());
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Название подборки'),
+        content: TextField(
+          controller: _ctrl,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена')),
+          FilledButton(onPressed: _submit, child: const Text('Сохранить')),
+        ],
+      );
+}
+
 /// Отдельный виджет — чтобы контроллер поля корректно освобождался.
 class _NewCollectionDialog extends StatefulWidget {
   const _NewCollectionDialog();
@@ -156,6 +194,18 @@ class _CollectionBlock extends ConsumerWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: c.orange)),
+            ),
+            // Переименовать / удалить подборку
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, size: 20, color: c.gray),
+              tooltip: 'Действия с подборкой',
+              onSelected: (v) => v == 'rename'
+                  ? _renameDialog(context, ref)
+                  : _deleteDialog(context, ref),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'rename', child: Text('Переименовать')),
+                PopupMenuItem(value: 'delete', child: Text('Удалить подборку')),
+              ],
             ),
           ],
         ),
@@ -236,6 +286,56 @@ class _CollectionBlock extends ConsumerWidget {
         ],
       ],
     );
+  }
+
+  /// Переименование подборки.
+  Future<void> _renameDialog(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameDialog(initial: collection.name),
+    );
+    if (name == null || name.isEmpty || name == collection.name) return;
+    try {
+      await ref.read(collectionsProvider.notifier).rename(collection.id, name);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_err(e, 'Не удалось переименовать'))));
+    }
+  }
+
+  /// Удаление подборки — с подтверждением, действие необратимое.
+  Future<void> _deleteDialog(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Удалить «${collection.name}»?'),
+        content: const Text(
+            'Подборка и все её позиции будут удалены. Отменить нельзя.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отмена')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Удалить')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(collectionsProvider.notifier).remove(collection.id);
+      messenger.showSnackBar(
+          SnackBar(content: Text('Подборка «${collection.name}» удалена')));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(_err(e, 'Не удалось удалить'))));
+    }
+  }
+
+  String _err(Object e, String fallback) {
+    final t = e.toString();
+    return t.startsWith('Failure: ') ? t.substring(9) : fallback;
   }
 
   void _copySpec(BuildContext context, Collection col) {

@@ -17,6 +17,7 @@ import '../../../core/widgets/category_icons.dart';
 import '../../catalog/domain/offer.dart';
 import '../../catalog/domain/product.dart';
 import '../../collections/presentation/collections_providers.dart';
+import '../../collections/presentation/widgets/collection_picker.dart';
 import '../../favorites/presentation/favorites_providers.dart';
 import 'product_providers.dart';
 import 'widgets/reviews_section.dart';
@@ -464,11 +465,11 @@ class _AddToCollectionBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final inCollection = ref.watch(collectionsProvider).maybeWhen(
-          data: (cols) =>
-              cols.any((c) => c.items.any((i) => i.productId == product.id)),
-          orElse: () => false,
-        );
+    final cols = ref.watch(collectionsProvider).valueOrNull ?? const [];
+    final inCollection =
+        cols.any((col) => col.items.any((i) => i.productId == product.id));
+    // Одна подборка — кладём сразу; две и больше — спрашиваем, в какую
+    final needPicker = cols.length > 1;
     final c = context.colors;
 
     return SafeArea(
@@ -483,8 +484,14 @@ class _AddToCollectionBar extends ConsumerWidget {
                   inCollection ? Colors.white : AppColors.brandInk,
             ),
             icon: Icon(inCollection ? Icons.check : Icons.add, size: 20),
-            label: Text(inCollection ? 'В комплекте' : 'В комплект +'),
+            label: Text(needPicker
+                ? (inCollection ? 'В подборках — изменить' : 'Выбрать подборку')
+                : (inCollection ? 'В комплекте' : 'В комплект +')),
             onPressed: () async {
+              if (needPicker) {
+                await showCollectionPicker(context, ref, product.id);
+                return;
+              }
               try {
                 final name = await ref
                     .read(collectionsProvider.notifier)

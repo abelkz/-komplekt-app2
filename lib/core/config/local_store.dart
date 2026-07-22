@@ -21,6 +21,15 @@ class LocalStore {
   Future<void> setOnboardingDone(bool v) =>
       _prefs.setBool('onboarding_done', v);
 
+  // Уведомления о снижении цены: включены и минимальный процент.
+  // Держим на устройстве, чтобы выбор сохранялся даже если в базе
+  // ещё нет колонок notify_price_drops / notify_threshold.
+  bool get notifyEnabled => _prefs.getBool('notify_enabled') ?? true;
+  Future<void> setNotifyEnabled(bool v) => _prefs.setBool('notify_enabled', v);
+
+  int get notifyThreshold => _prefs.getInt('notify_threshold') ?? 10;
+  Future<void> setNotifyThreshold(int v) => _prefs.setInt('notify_threshold', v);
+
   // Недавние поиски (до 5)
   List<String> get recentSearches =>
       _prefs.getStringList('recent_searches') ?? const [];
