@@ -247,7 +247,7 @@ class _CollectionBlock extends ConsumerWidget {
                       style: AppTypography.sectionLabel(color: c.gray)),
                 ),
                 const SizedBox(width: 10),
-                Text(Formatters.price(collection.total),
+                Text(Formatters.priceOr(collection.total, fallback: '—'),
                     style: AppTypography.unbounded(size: 26, color: c.ink)),
               ],
             ),
@@ -343,9 +343,10 @@ class _CollectionBlock extends ConsumerWidget {
       final p = i.product;
       final best = p?.bestOffer;
       final name = p?.name ?? '';
-      final sum = (best?.price ?? 0) * i.qty;
-      return '· $name — ${Formatters.number(i.qty)} ${p?.unit ?? ''} × '
-          '${Formatters.price(best?.price ?? 0)} = ${Formatters.price(sum)}';
+      final qty = '${Formatters.number(i.qty)} ${p?.unit ?? ''}'.trim();
+      if (best == null) return '· $name — $qty · ${Formatters.priceUnset}';
+      return '· $name — $qty × ${Formatters.price(best.price)} '
+          '= ${Formatters.price(best.price * i.qty)}';
     }).join('\n');
     final text = 'Спецификация «${col.name}»\n\n$lines\n\n'
         'Итого: ${Formatters.price(col.total)}';
@@ -421,7 +422,11 @@ class _ItemRow extends ConsumerWidget {
                               fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 3),
                       Text(
-                        '${best?.supplierName ?? ''} · ${Formatters.price(best?.price ?? 0)}/${p.unit}',
+                        // Нет предложений — вместо «0 ₸» честная подпись
+                        best == null
+                            ? Formatters.priceUnset
+                            : '${best.supplierName} · '
+                                '${Formatters.price(best.price)}/${p.unit}',
                         style: TextStyle(fontSize: 11, color: c.faint),
                       ),
                     ],
@@ -442,7 +447,7 @@ class _ItemRow extends ConsumerWidget {
                     collectionId, p.id, item.qty + 1),
               ),
               const Spacer(),
-              Text(Formatters.price(item.sum),
+              Text(Formatters.priceOr(item.sum, fallback: '—'),
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.w800)),
             ],

@@ -17,6 +17,21 @@ class Formatters {
   static String price(num value, {String currency = '₸'}) =>
       '${number(value)} $currency';
 
+  /// Текст, когда у товара нет ни одного предложения поставщика.
+  static const priceUnset = 'цена не указана';
+
+  /// Цена, которой может не быть: вместо бессмысленного «0 ₸» показываем
+  /// понятную подпись. В тесных местах можно передать короткий вариант,
+  /// например fallback: '—'.
+  static String priceOr(
+    num? value, {
+    String currency = '₸',
+    String fallback = priceUnset,
+  }) =>
+      (value == null || value <= 0)
+          ? fallback
+          : price(value, currency: currency);
+
   /// Дата обновления цены -> "сегодня / вчера / N дн. назад".
   static String relativeDate(DateTime? ts) {
     if (ts == null) return '';

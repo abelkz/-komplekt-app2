@@ -184,10 +184,11 @@ class SpecExport {
                   r.name,
                   r.sku,
                   r.supplier,
-                  Formatters.number(r.price),
+                  // Цены нет — в таблице спецификации ставим прочерк
+                  r.price > 0 ? Formatters.number(r.price) : '—',
                   Formatters.number(r.qty),
                   r.unit,
-                  Formatters.number(r.sum),
+                  r.sum > 0 ? Formatters.number(r.sum) : '—',
                 ],
             ],
           ),

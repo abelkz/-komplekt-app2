@@ -87,17 +87,31 @@ class ProductCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (mn != null)
-                Padding(
+              Padding(
                   padding: const EdgeInsets.fromLTRB(0, 12, 16, 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        Formatters.price(mn),
-                        style: AppTypography.unbounded(size: 14, color: c.ink),
-                      ),
+                      // Без предложений поставщиков цены нет — так и пишем
+                      mn == null
+                          ? SizedBox(
+                              width: 78,
+                              child: Text(
+                                Formatters.priceUnset,
+                                textAlign: TextAlign.end,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    height: 1.25,
+                                    fontWeight: FontWeight.w600,
+                                    color: c.faint),
+                              ),
+                            )
+                          : Text(
+                              Formatters.price(mn),
+                              style:
+                                  AppTypography.unbounded(size: 14, color: c.ink),
+                            ),
                       const SizedBox(height: 6),
                       Text(
                         saving > 0 ? '▼ $saving%' : '—',

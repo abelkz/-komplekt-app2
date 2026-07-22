@@ -429,12 +429,16 @@ class _InspirationTile extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             height: 1.25)),
-                    if (mn != null)
-                      Text('от ${Formatters.price(mn)}',
-                          style: TextStyle(
-                              color: onBg.withOpacity(0.85),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
+                    Text(
+                        mn == null
+                            ? Formatters.priceUnset
+                            : 'от ${Formatters.price(mn)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: onBg.withOpacity(mn == null ? 0.7 : 0.85),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),

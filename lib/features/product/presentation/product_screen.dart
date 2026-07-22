@@ -186,6 +186,18 @@ class _ProductBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
+        // Ни одного предложения — объясняем, почему пусто
+        if (offers.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+            decoration: BoxDecoration(border: Border.all(color: c.line)),
+            child: Text(
+              'Цена не указана — поставщики ещё не прислали прайс '
+              'на этот товар.',
+              style: TextStyle(fontSize: 13, color: c.gray, height: 1.35),
+            ),
+          ),
         for (int i = 0; i < offers.length; i++)
           _OfferCard(
             offer: offers[i],
