@@ -3,6 +3,7 @@ class AppUser {
   const AppUser({
     required this.id,
     this.fullName = '',
+    this.company = '',
     this.phone,
     this.city = 'Астана',
     this.role = 'buyer',
@@ -14,6 +15,9 @@ class AppUser {
 
   final String id;
   final String fullName;
+
+  /// Название компании поставщика — им товар подписан в каталоге
+  final String company;
   final String? phone;
   final String city;
   final String role; // buyer | supplier | admin
@@ -35,6 +39,7 @@ class AppUser {
   factory AppUser.fromMap(Map<String, dynamic> m) => AppUser(
         id: m['id'].toString(),
         fullName: m['full_name'] as String? ?? '',
+        company: m['company'] as String? ?? '',
         phone: m['phone'] as String?,
         city: m['city'] as String? ?? 'Астана',
         role: m['role'] as String? ?? 'buyer',

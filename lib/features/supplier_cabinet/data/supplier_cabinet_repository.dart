@@ -27,6 +27,11 @@ class ProductStat {
 }
 
 /// Кабинет поставщика: компания, товары, цены, импорт, статистика.
+///
+/// ВАЖНО про схему живой базы: владелец записи — это `owner_id`
+/// (колонки `created_by` там нет), основное фото товара лежит прямо
+/// в `products.image_url`, а марка — только в отдельной таблице brands.
+/// Веб-кабинет supplier.html пишет ровно так же — форматы совпадают.
 class SupplierCabinetRepository {
   const SupplierCabinetRepository();
 
@@ -72,11 +77,12 @@ class SupplierCabinetRepository {
     try {
       final rows = await supabase
           .from('products')
-          .select('id,name,sku,unit,color,category_slug,brand,'
+          .select('id,name,sku,unit,color,image_url,category_slug,'
+              'brands(name),'
               'product_images(url,sort),'
               'offers(id,price,in_stock,price_updated_at,supplier_id)')
-          .eq('created_by', uid)
-          .order('created_at', ascending: false);
+          .eq('owner_id', uid)
+          .order('id', ascending: false);
       return rows.map<Product>((m) => Product.fromMap(m)).toList();
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить товары');
@@ -104,7 +110,8 @@ class SupplierCabinetRepository {
             'sku': sku,
             'unit': unit,
             'category_slug': categorySlug,
-            'created_by': uid,
+            'image_url': (imageUrl == null || imageUrl.isEmpty) ? null : imageUrl,
+            'owner_id': uid,
           })
           .select('id')
           .single();
@@ -117,12 +124,6 @@ class SupplierCabinetRepository {
         'price': price,
         'in_stock': inStock,
       });
-
-      if (imageUrl != null && imageUrl.isNotEmpty) {
-        await supabase
-            .from('product_images')
-            .insert({'product_id': productId, 'url': imageUrl, 'sort': 0});
-      }
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось сохранить товар');
     }
@@ -178,14 +179,16 @@ class SupplierCabinetRepository {
     if (uid == null) throw const Failure('Нужно войти');
     if (rows.isEmpty) return 0;
     try {
-      // 1) товары пачкой
+      // 1) товары пачкой — фото сразу в products.image_url, как в вебе
       final productsPayload = rows
           .map((r) => {
                 'name': r.name,
                 'sku': r.sku,
                 'unit': r.unit,
                 'category_slug': categorySlug,
-                'created_by': uid,
+                'image_url':
+                    (r.imageUrl == null || r.imageUrl!.isEmpty) ? null : r.imageUrl,
+                'owner_id': uid,
               })
           .toList();
       final inserted = await supabase
@@ -193,38 +196,32 @@ class SupplierCabinetRepository {
           .insert(productsPayload)
           .select('id');
 
-      // 2) к каждому — цена (порядок сохраняется)
+      // 2) к каждому — цена (порядок вставки сохраняется)
       final offersPayload = <Map<String, dynamic>>[];
-      final imagesPayload = <Map<String, dynamic>>[];
       for (var i = 0; i < inserted.length; i++) {
-        final pid = inserted[i]['id'];
         offersPayload.add({
-          'product_id': pid,
+          'product_id': inserted[i]['id'],
           'supplier_id': supplierId,
           'owner_id': uid,
           'price': rows[i].price,
           'in_stock': true,
         });
-        final img = rows[i].imageUrl;
-        if (img != null && img.isNotEmpty) {
-          imagesPayload.add({'product_id': pid, 'url': img, 'sort': 0});
-        }
       }
       await supabase.from('offers').insert(offersPayload);
-      if (imagesPayload.isNotEmpty) {
-        await supabase.from('product_images').insert(imagesPayload);
-      }
       return inserted.length;
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить прайс');
     }
   }
 
-  /// Статистика просмотров/контактов по моим товарам.
+  /// Статистика просмотров/обращений по моим товарам.
+  ///
+  /// Сначала пробуем функцию supplier_stats (миграция 0010). Если её в базе
+  /// ещё нет — считаем сами по таблице events, чтобы кабинет не пустовал.
   Future<Map<String, ProductStat>> stats(String supplierId) async {
     try {
-      final rows =
-          await supabase.rpc('supplier_stats', params: {'p_supplier': supplierId});
+      final rows = await supabase
+          .rpc('supplier_stats', params: {'p_supplier': int.tryParse(supplierId) ?? supplierId});
       final map = <String, ProductStat>{};
       for (final r in (rows as List)) {
         final m = r as Map<String, dynamic>;
@@ -234,17 +231,60 @@ class SupplierCabinetRepository {
         );
       }
       return map;
-    } catch (e) {
-      // статистика не критична — возвращаем пусто
+    } catch (_) {
+      return _statsFromEvents(supplierId);
+    }
+  }
+
+  Future<Map<String, ProductStat>> _statsFromEvents(String supplierId) async {
+    try {
+      final rows = await supabase
+          .from('events')
+          .select('type,product_id')
+          .eq('supplier_id', supplierId)
+          .limit(5000);
+      final map = <String, ProductStat>{};
+      for (final r in rows) {
+        final pid = r['product_id']?.toString();
+        if (pid == null) continue;
+        final type = (r['type'] ?? '').toString();
+        final prev = map[pid] ?? const ProductStat(0, 0);
+        final isContact =
+            type == 'contact' || type == 'call' || type == 'whatsapp';
+        map[pid] = ProductStat(
+          prev.views + (isContact ? 0 : 1),
+          prev.contacts + (isContact ? 1 : 0),
+        );
+      }
+      return map;
+    } catch (_) {
+      // статистика не критична — кабинет работает и без неё
       return {};
     }
   }
 
-  /// Стать поставщиком (меняет роль текущего пользователя на supplier/pending).
-  Future<void> becomeSupplier() async {
+  /// Заявка на статус поставщика: профиль переходит в supplier/pending.
+  /// Одобряет администратор в панели admin.html.
+  Future<void> becomeSupplier({
+    required String company,
+    String? city,
+    String? phone,
+  }) async {
+    if (_uid == null) throw const Failure('Нужно войти');
+    if (company.trim().isEmpty) {
+      throw const Failure('Укажите название компании');
+    }
     try {
-      await supabase.rpc('become_supplier');
+      await supabase.rpc('become_supplier', params: {
+        'p_company': company.trim(),
+        'p_city': city?.trim(),
+        'p_phone': phone?.trim(),
+      });
     } catch (e) {
+      if (e.toString().contains('become_supplier')) {
+        throw const Failure(
+            'Приём заявок ещё не настроен на сервере — примените миграцию 0010');
+      }
       throw mapError(e, fallback: 'Не удалось оформить заявку');
     }
   }

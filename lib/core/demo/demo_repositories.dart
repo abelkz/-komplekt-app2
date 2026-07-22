@@ -322,7 +322,12 @@ class DemoCabinetRepository extends SupplierCabinetRepository {
   Future<Map<String, ProductStat>> stats(String supplierId) async => const {};
 
   @override
-  Future<void> becomeSupplier() async => throw _msg;
+  Future<void> becomeSupplier({
+    required String company,
+    String? city,
+    String? phone,
+  }) async =>
+      throw _msg;
 }
 
 // ── Уведомления о ценах (демо) ──

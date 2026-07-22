@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/settings_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../auth/domain/app_user.dart';
@@ -40,56 +41,143 @@ class SupplierCabinetScreen extends ConsumerWidget {
   }
 }
 
-// ───── CTA: стать поставщиком ─────
-class _BecomeSupplier extends ConsumerWidget {
+// ───── Заявка: стать поставщиком ─────
+class _BecomeSupplier extends ConsumerStatefulWidget {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BecomeSupplier> createState() => _BecomeSupplierState();
+}
+
+class _BecomeSupplierState extends ConsumerState<_BecomeSupplier> {
+  final _company = TextEditingController();
+  final _city = TextEditingController();
+  final _phone = TextEditingController();
+  String? _error;
+  bool _prefilled = false;
+
+  @override
+  void dispose() {
+    for (final c in [_company, _city, _phone]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() => _error = null);
+    if (_company.text.trim().isEmpty) {
+      setState(() => _error = 'Укажите название компании');
+      return;
+    }
+    final ok = await ref.read(cabinetControllerProvider.notifier).becomeSupplier(
+          company: _company.text,
+          city: _city.text,
+          phone: _phone.text,
+        );
+    if (!ok && mounted) {
+      final e = ref.read(cabinetControllerProvider).error;
+      final t = e?.toString() ?? '';
+      setState(() => _error =
+          t.startsWith('Failure: ') ? t.substring(9) : 'Не удалось отправить заявку');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final c = context.colors;
     final loading = ref.watch(cabinetControllerProvider).isLoading;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
+
+    // подставляем то, что уже известно о пользователе
+    final profile = ref.watch(myProfileProvider).valueOrNull;
+    final city = ref.watch(settingsProvider).city;
+    if (!_prefilled && profile != null) {
+      _prefilled = true;
+      _city.text = profile.city.isNotEmpty ? profile.city : city;
+      _phone.text = profile.phone ?? '';
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 72,
+              height: 72,
               decoration:
                   BoxDecoration(color: c.orangeSoft, shape: BoxShape.circle),
-              child: Icon(Icons.storefront_outlined, size: 44, color: c.orange),
+              child: Icon(Icons.storefront_outlined, size: 36, color: c.orange),
             ),
-            const SizedBox(height: 22),
-            Text('Размещайте товары и цены',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w700, color: c.ink)),
-            const SizedBox(height: 10),
-            Text(
-              'Их увидят дизайнеры, комплектаторы и прорабы в приложении '
-              'КОМПЛЕКТ. После заявки компанию проверит администратор.',
+          ),
+          const SizedBox(height: 18),
+          Text('Размещайте товары и цены',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: c.gray, height: 1.5),
-            ),
-            const SizedBox(height: 26),
-            FilledButton(
-              onPressed: loading
-                  ? null
-                  : () =>
-                      ref.read(cabinetControllerProvider.notifier).becomeSupplier(),
-              child: loading
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.brandInk))
-                  : const Text('Стать поставщиком'),
+              style: TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.w700, color: c.ink)),
+          const SizedBox(height: 8),
+          Text(
+            'Их увидят дизайнеры, комплектаторы и прорабы в приложении '
+            'КОМПЛЕКТ. Заявку проверит администратор — обычно за один рабочий день.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: c.gray, height: 1.5),
+          ),
+          const SizedBox(height: 24),
+          _label(c, 'Название компании'),
+          TextField(
+            controller: _company,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(hintText: 'ТОО «СтройДом»'),
+          ),
+          const SizedBox(height: 14),
+          _label(c, 'Город'),
+          TextField(
+            controller: _city,
+            decoration: const InputDecoration(hintText: 'Астана'),
+          ),
+          const SizedBox(height: 14),
+          _label(c, 'Телефон для клиентов'),
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(hintText: '+7 7XX XXX XX XX'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: c.redSoft, borderRadius: BorderRadius.circular(AppRadii.sm)),
+              child: Text(_error!,
+                  style: TextStyle(color: c.red, fontSize: 13)),
             ),
           ],
-        ),
+          const SizedBox(height: 22),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16)),
+            onPressed: loading ? null : _submit,
+            child: loading
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.brandInk))
+                : const Text('Отправить заявку'),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _label(AppColors c, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(text.toUpperCase(),
+            style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 0.6,
+                fontWeight: FontWeight.w700,
+                color: c.gray)),
+      );
 }
 
 // ───── Ожидание/отказ ─────

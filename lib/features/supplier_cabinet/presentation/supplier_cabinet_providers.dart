@@ -11,8 +11,12 @@ import '../data/supplier_cabinet_repository.dart';
 final myCompanyProvider = FutureProvider<Supplier>((ref) async {
   final profile = await ref.watch(myProfileProvider.future);
   final city = ref.watch(settingsProvider).city;
+  // В каталоге товар подписывается компанией, а не именем человека
+  final name = (profile?.company.isNotEmpty ?? false)
+      ? profile!.company
+      : (profile?.fullName ?? '');
   return ref.read(supplierCabinetRepositoryProvider).ensureCompany(
-        fallbackName: profile?.fullName ?? '',
+        fallbackName: name,
         city: profile?.city ?? city,
         phone: profile?.phone,
       );
@@ -112,9 +116,19 @@ class CabinetController extends AsyncNotifier<void> {
     }
   }
 
-  Future<bool> becomeSupplier() async {
+  /// Заявка на статус поставщика. Компания обязательна — она попадёт
+  /// в каталог как название продавца.
+  Future<bool> becomeSupplier({
+    required String company,
+    String? city,
+    String? phone,
+  }) async {
     final ok = await _run(
-        () => ref.read(supplierCabinetRepositoryProvider).becomeSupplier());
+        () => ref.read(supplierCabinetRepositoryProvider).becomeSupplier(
+              company: company,
+              city: city,
+              phone: phone,
+            ));
     if (ok) ref.invalidate(myProfileProvider);
     return ok;
   }
