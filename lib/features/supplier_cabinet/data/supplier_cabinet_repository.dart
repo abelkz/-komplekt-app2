@@ -1,7 +1,27 @@
+﻿import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+
 import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
 import '../../catalog/domain/product.dart';
 import '../../suppliers_map/domain/supplier.dart';
+
+/// Ошибка с настоящим текстом от базы.
+///
+/// В кабинете поставщика общее «не удалось сохранить» бесполезно: причина
+/// почти всегда конкретная — не хватило прав, нарушено ограничение, нет
+/// колонки. Показываем её человеку и себе.
+Failure _dbFail(Object e, String what) {
+  if (e is PostgrestException) {
+    final code = e.code;
+    if (code == '42501') {
+      return Failure('$what: база отклонила запись — нет прав '
+          '(проверьте, одобрен ли поставщик)');
+    }
+    final detail = [e.message, if (code != null) 'код $code'].join(' · ');
+    return Failure('$what: $detail');
+  }
+  return mapError(e, fallback: what);
+}
 
 /// Импортируемая строка прайса (после сопоставления колонок).
 class PriceRow {
@@ -66,7 +86,7 @@ class SupplierCabinetRepository {
           .single();
       return Supplier.fromMap(created);
     } catch (e) {
-      throw mapError(e, fallback: 'Не удалось создать карточку компании');
+      throw _dbFail(e, 'Не удалось создать карточку компании');
     }
   }
 
@@ -125,7 +145,7 @@ class SupplierCabinetRepository {
         'in_stock': inStock,
       });
     } catch (e) {
-      throw mapError(e, fallback: 'Не удалось сохранить товар');
+      throw _dbFail(e, 'Не удалось сохранить товар');
     }
   }
 
@@ -156,7 +176,7 @@ class SupplierCabinetRepository {
         }).eq('id', offerId);
       }
     } catch (e) {
-      throw mapError(e, fallback: 'Не удалось сохранить цену');
+      throw _dbFail(e, 'Не удалось сохранить цену');
     }
   }
 
@@ -164,7 +184,7 @@ class SupplierCabinetRepository {
     try {
       await supabase.from('products').delete().eq('id', productId);
     } catch (e) {
-      throw mapError(e, fallback: 'Не удалось удалить товар');
+      throw _dbFail(e, 'Не удалось удалить товар');
     }
   }
 
@@ -210,7 +230,7 @@ class SupplierCabinetRepository {
       await supabase.from('offers').insert(offersPayload);
       return inserted.length;
     } catch (e) {
-      throw mapError(e, fallback: 'Не удалось загрузить прайс');
+      throw _dbFail(e, 'Не удалось загрузить прайс');
     }
   }
 

@@ -48,6 +48,15 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
     super.dispose();
   }
 
+  /// Цена или наличие отличаются от того, что сейчас в базе
+  bool get _dirty {
+    final offer =
+        widget.product.offers.isNotEmpty ? widget.product.offers.first : null;
+    final typed = double.tryParse(_price.text.replaceAll(',', '.'));
+    if (offer == null) return typed != null && typed > 0;
+    return typed != offer.price || _inStock != offer.inStock;
+  }
+
   Future<void> _save() async {
     final price = double.tryParse(_price.text.replaceAll(',', '.'));
     if (price == null || price <= 0) {
@@ -61,7 +70,14 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
           price: price,
           inStock: _inStock,
         );
-    _snack(ok ? 'Сохранено ✓' : 'Не удалось сохранить');
+    if (ok) {
+      _snack('Цена обновлена ✓');
+      return;
+    }
+    // Показываем настоящий текст ошибки от базы, а не общую фразу
+    final e = ref.read(cabinetControllerProvider).error;
+    final t = e?.toString() ?? '';
+    _snack(t.startsWith('Failure: ') ? t.substring(9) : 'Не удалось сохранить');
   }
 
   Future<void> _delete() async {
@@ -153,6 +169,8 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                   ],
+                  // перерисовываем строку, чтобы кнопка сохранения ожила
+                  onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     labelText: 'Цена, ₸',
                     isDense: true,
@@ -181,11 +199,23 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
                   ),
                 ),
               ),
-              IconButton(
-                icon: Icon(Icons.check_circle, color: c.orange),
-                onPressed: _save,
-              ),
             ],
+          ),
+          const SizedBox(height: 8),
+          // Явная кнопка вместо маленькой галочки: пока ничего не меняли —
+          // она приглушена, после правки цены становится активной.
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: _dirty ? c.accent : c.field,
+                foregroundColor: _dirty ? AppColors.brandInk : c.gray,
+              ),
+              icon: const Icon(Icons.save_outlined, size: 18),
+              label: Text(_dirty ? 'Обновить цену' : 'Цена сохранена'),
+              onPressed: _dirty ? _save : null,
+            ),
           ),
           if (widget.stat != null)
             Padding(

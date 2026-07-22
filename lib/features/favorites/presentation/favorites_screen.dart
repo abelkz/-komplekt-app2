@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/skeletons.dart';
@@ -44,7 +45,21 @@ class FavoritesScreen extends ConsumerWidget {
                     padding: const EdgeInsets.only(top: 8, bottom: 24),
                     itemCount: list.length,
                     separatorBuilder: (_, __) => const SpecDivider(),
-                    itemBuilder: (_, i) => ProductCard(product: list[i], index: i),
+                    // Смахивание влево убирает товар из избранного —
+                    // так же, как в подборках
+                    itemBuilder: (_, i) => Dismissible(
+                      key: ValueKey('fav-${list[i].id}'),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        padding: const EdgeInsets.only(right: 22),
+                        alignment: Alignment.centerRight,
+                        color: context.colors.red,
+                        child: const Icon(Icons.delete_outline,
+                            color: Colors.white, size: 26),
+                      ),
+                      onDismissed: (_) => _remove(context, ref, list[i]),
+                      child: ProductCard(product: list[i], index: i),
+                    ),
                   ),
                 ),
               ),
@@ -53,5 +68,28 @@ class FavoritesScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Убрать из избранного с возможностью вернуть — смахнуть можно случайно.
+  Future<void> _remove(
+      BuildContext context, WidgetRef ref, Product product) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final notifier = ref.read(favoriteIdsProvider.notifier);
+    try {
+      await notifier.toggle(product.id);
+      messenger.showSnackBar(SnackBar(
+        content: Text('${product.name} убран из избранного'),
+        action: SnackBarAction(
+          label: 'Вернуть',
+          onPressed: () => notifier.toggle(product.id).catchError((_) {}),
+        ),
+      ));
+    } catch (e) {
+      final t = e.toString();
+      messenger.showSnackBar(SnackBar(
+          content: Text(t.startsWith('Failure: ')
+              ? t.substring(9)
+              : 'Не удалось убрать из избранного')));
+    }
   }
 }
