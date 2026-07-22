@@ -1,4 +1,4 @@
-﻿import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
@@ -14,8 +14,8 @@ Failure _dbFail(Object e, String what) {
   if (e is PostgrestException) {
     final code = e.code;
     if (code == '42501') {
-      return Failure('$what: база отклонила запись — нет прав '
-          '(проверьте, одобрен ли поставщик)');
+      return Failure('$what: база не опознала пользователя. '
+          'Выйдите и войдите заново — скорее всего истекла сессия.');
     }
     final detail = [e.message, if (code != null) 'код $code'].join(' · ');
     return Failure('$what: $detail');
@@ -57,14 +57,36 @@ class SupplierCabinetRepository {
 
   String? get _uid => supabase.auth.currentUser?.id;
 
+  /// Проверяет, что база сможет опознать пользователя, и при необходимости
+  /// продлевает сессию.
+  ///
+  /// Приложение месяцами живёт вкладкой в фоне: ключ сессии протухает,
+  /// автоматическое продление не срабатывает, и запись отлетает по правам
+  /// (auth.uid() пустой), хотя человек по-прежнему «в аккаунте».
+  Future<String> _requireSession() async {
+    var session = supabase.auth.currentSession;
+    if (session == null) throw const Failure('Нужно войти');
+    if (session.isExpired) {
+      try {
+        final res = await supabase.auth.refreshSession();
+        session = res.session;
+      } catch (_) {
+        throw const Failure('Сессия истекла — выйдите и войдите заново');
+      }
+      if (session == null) {
+        throw const Failure('Сессия истекла — выйдите и войдите заново');
+      }
+    }
+    return session.user.id;
+  }
+
   /// Найти карточку компании владельца или создать её.
   Future<Supplier> ensureCompany({
     required String fallbackName,
     required String city,
     String? phone,
   }) async {
-    final uid = _uid;
-    if (uid == null) throw const Failure('Нужно войти');
+    final uid = await _requireSession();
     try {
       final existing = await supabase
           .from('suppliers')
@@ -120,8 +142,7 @@ class SupplierCabinetRepository {
     String? sku,
     String? imageUrl,
   }) async {
-    final uid = _uid;
-    if (uid == null) throw const Failure('Нужно войти');
+    final uid = await _requireSession();
     try {
       final product = await supabase
           .from('products')
@@ -157,8 +178,7 @@ class SupplierCabinetRepository {
     required double price,
     required bool inStock,
   }) async {
-    final uid = _uid;
-    if (uid == null) throw const Failure('Нужно войти');
+    final uid = await _requireSession();
     try {
       if (offerId == null) {
         await supabase.from('offers').insert({
@@ -181,6 +201,7 @@ class SupplierCabinetRepository {
   }
 
   Future<void> deleteProduct(String productId) async {
+    await _requireSession();
     try {
       await supabase.from('products').delete().eq('id', productId);
     } catch (e) {
@@ -195,8 +216,7 @@ class SupplierCabinetRepository {
     required String categorySlug,
     required String supplierId,
   }) async {
-    final uid = _uid;
-    if (uid == null) throw const Failure('Нужно войти');
+    final uid = await _requireSession();
     if (rows.isEmpty) return 0;
     try {
       // 1) товары пачкой — фото сразу в products.image_url, как в вебе
@@ -290,7 +310,7 @@ class SupplierCabinetRepository {
     String? city,
     String? phone,
   }) async {
-    if (_uid == null) throw const Failure('Нужно войти');
+    await _requireSession();
     if (company.trim().isEmpty) {
       throw const Failure('Укажите название компании');
     }
