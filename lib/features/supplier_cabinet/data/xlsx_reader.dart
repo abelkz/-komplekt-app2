@@ -38,9 +38,9 @@ class XlsxReader {
     final shared = <String>[];
     final sharedXml = fileText('xl/sharedStrings.xml');
     if (sharedXml != null) {
-      for (final si in XmlDocument.parse(sharedXml).findAllElements('si')) {
+      for (final si in _all(XmlDocument.parse(sharedXml), 'si')) {
         // текст может быть разбит на несколько кусков <t> с разным оформлением
-        shared.add(si.findAllElements('t').map((t) => t.innerText).join());
+        shared.add(_all(si, 't').map((t) => t.innerText).join());
       }
     }
 
@@ -54,10 +54,10 @@ class XlsxReader {
     final table = <int, Map<int, String>>{};
     var maxCol = 0;
 
-    for (final row in doc.findAllElements('row')) {
+    for (final row in _all(doc, 'row')) {
       final rowIndex = int.tryParse(row.getAttribute('r') ?? '') ?? (table.length + 1);
       final cells = <int, String>{};
-      for (final c in row.findElements('c')) {
+      for (final c in _all(row, 'c')) {
         final ref = c.getAttribute('r') ?? '';
         final col = _columnIndex(ref);
         if (col < 0) continue;
@@ -96,13 +96,23 @@ class XlsxReader {
     return null;
   }
 
+  /// Поиск элементов по имени независимо от пространства имён.
+  ///
+  /// Разные программы пишут одни и те же теги по-разному: Excel — `<row>`,
+  /// а генераторы отчётов — `<x:row>` с префиксом. Ищем по короткому имени,
+  /// иначе на файлах со вторым вариантом не находится вообще ничего.
+  static Iterable<XmlElement> _all(XmlNode node, String name) =>
+      node.findAllElements(name, namespace: '*');
+
   /// Текст ячейки с учётом её типа.
   static String _cellText(XmlElement c, List<String> shared) {
     final type = c.getAttribute('t');
     if (type == 'inlineStr') {
-      return c.findAllElements('t').map((t) => t.innerText).join().trim();
+      return _all(c, 't').map((t) => t.innerText).join().trim();
     }
-    final v = c.findElements('v').firstOrNull?.innerText.trim() ?? '';
+    // t="str" — результат формулы, значение лежит там же, в <v>
+    final values = _all(c, 'v');
+    final v = values.isEmpty ? '' : values.first.innerText.trim();
     if (v.isEmpty) return '';
     if (type == 's') {
       final idx = int.tryParse(v);
@@ -131,8 +141,4 @@ class XlsxReader {
     }
     return seen ? col - 1 : -1;
   }
-}
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }
