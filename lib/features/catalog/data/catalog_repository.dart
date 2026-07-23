@@ -19,7 +19,7 @@ class CatalogRepository {
       'brand_id,'
       'brands(name),'
       'product_images(url,sort),'
-      'offers(id,price,in_stock,price_updated_at,supplier_id,'
+      'offers(id,price,prev_price,in_stock,price_updated_at,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website))';
 
   /// Список категорий (по полю sort).

@@ -113,14 +113,31 @@ class ProductCard extends StatelessWidget {
                                   AppTypography.unbounded(size: 14, color: c.ink),
                             ),
                       const SizedBox(height: 6),
-                      Text(
-                        saving > 0 ? '▼ $saving%' : '—',
-                        style: AppTypography.mono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          color: saving > 0 ? c.green : c.faint,
-                        ),
-                      ),
+                      // Сначала — изменение цены у лучшего предложения:
+                      // «подешевело на 8%» полезнее, чем разброс между
+                      // поставщиками. Если цену не меняли — показываем разброс.
+                      () {
+                        final change = product.bestOffer?.changePercent;
+                        if (change != null) {
+                          final down = change < 0;
+                          return Text(
+                            '${down ? '▼' : '▲'} ${change.abs()}%',
+                            style: AppTypography.mono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              color: down ? c.green : c.red,
+                            ),
+                          );
+                        }
+                        return Text(
+                          saving > 0 ? '▼ $saving%' : '—',
+                          style: AppTypography.mono(
+                            size: 10,
+                            weight: FontWeight.w700,
+                            color: saving > 0 ? c.green : c.faint,
+                          ),
+                        );
+                      }(),
                     ],
                   ),
                 ),

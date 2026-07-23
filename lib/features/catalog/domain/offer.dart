@@ -12,6 +12,7 @@ class Offer {
     this.whatsapp,
     this.website,
     this.priceUpdatedAt,
+    this.prevPrice,
   });
 
   final String? id;
@@ -24,6 +25,18 @@ class Offer {
   final String? whatsapp;
   final String? website;
   final DateTime? priceUpdatedAt;
+
+  /// Цена до последнего изменения — по ней показываем ▼/▲ на карточке.
+  /// Заполняется триггером в базе (миграция 0012).
+  final double? prevPrice;
+
+  /// Насколько изменилась цена, в процентах. Отрицательное — подешевело.
+  /// null, если прежней цены нет или она не изменилась.
+  int? get changePercent {
+    final prev = prevPrice;
+    if (prev == null || prev <= 0 || prev == price) return null;
+    return ((price - prev) / prev * 100).round();
+  }
 
   factory Offer.fromMap(Map<String, dynamic> m) {
     // suppliers может прийти как вложенный объект (PostgREST embedding)
@@ -42,6 +55,7 @@ class Offer {
       priceUpdatedAt: m['price_updated_at'] != null
           ? DateTime.tryParse(m['price_updated_at'].toString())
           : null,
+      prevPrice: (m['prev_price'] as num?)?.toDouble(),
     );
   }
 }

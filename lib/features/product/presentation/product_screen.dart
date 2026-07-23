@@ -411,6 +411,19 @@ class _OfferCard extends ConsumerWidget {
                       style: AppTypography.unbounded(
                           size: best ? 17 : 14,
                           color: best ? c.accent : c.ink)),
+                  // Изменение относительно прежней цены этого поставщика
+                  if (offer.changePercent != null) ...[
+                    Text(
+                      offer.changePercent! < 0
+                          ? '▼ ${offer.changePercent!.abs()}% · было ${Formatters.price(offer.prevPrice!)}'
+                          : '▲ ${offer.changePercent}% · было ${Formatters.price(offer.prevPrice!)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: offer.changePercent! < 0 ? c.green : c.red,
+                      ),
+                    ),
+                  ],
                   if (!best && diff > 0)
                     Text('+$diff% к мин.',
                         style: TextStyle(

@@ -122,7 +122,7 @@ class SupplierCabinetRepository {
           .select('id,name,sku,unit,color,image_url,category_slug,'
               'brands(name),'
               'product_images(url,sort),'
-              'offers(id,price,in_stock,price_updated_at,supplier_id)')
+              'offers(id,price,prev_price,in_stock,price_updated_at,supplier_id)')
           .eq('owner_id', uid)
           .order('id', ascending: false);
       return rows.map<Product>((m) => Product.fromMap(m)).toList();
@@ -243,36 +243,109 @@ class SupplierCabinetRepository {
     final uid = await _requireSession();
     if (rows.isEmpty) return 0;
     try {
-      // 1) товары пачкой — фото сразу в products.image_url, как в вебе
-      final productsPayload = rows
-          .map((r) => {
-                'name': r.name,
-                'sku': r.sku,
-                'unit': r.unit,
-                'category_slug': categorySlug,
-                'image_url':
-                    (r.imageUrl == null || r.imageUrl!.isEmpty) ? null : r.imageUrl,
-                'owner_id': uid,
-              })
+      // 0) Что из прайса уже есть в каталоге этого поставщика.
+      //    Ищем по артикулу — это код товара у поставщика, по нему
+      //    прайс и обновляют. Иначе повторная загрузка плодила бы дубли.
+      final skus = rows
+          .map((r) => r.sku?.trim())
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toSet()
           .toList();
-      final inserted = await supabase
-          .from('products')
-          .insert(productsPayload)
-          .select('id');
 
-      // 2) к каждому — цена (порядок вставки сохраняется)
-      final offersPayload = <Map<String, dynamic>>[];
-      for (var i = 0; i < inserted.length; i++) {
-        offersPayload.add({
-          'product_id': inserted[i]['id'],
-          'supplier_id': supplierId,
-          'owner_id': uid,
-          'price': rows[i].price,
-          'in_stock': true,
-        });
+      final existing = <String, dynamic>{}; // артикул -> id товара
+      if (skus.isNotEmpty) {
+        final found = await supabase
+            .from('products')
+            .select('id,sku')
+            .eq('owner_id', uid)
+            .inFilter('sku', skus);
+        for (final row in found) {
+          final sku = row['sku']?.toString();
+          if (sku != null && sku.isNotEmpty) existing[sku] = row['id'];
+        }
       }
-      await supabase.from('offers').insert(offersPayload);
-      return inserted.length;
+
+      final newRows = <PriceRow>[];
+      final updates = <MapEntry<dynamic, PriceRow>>[]; // id товара -> строка
+      for (final r in rows) {
+        final sku = r.sku?.trim();
+        final id = (sku != null && sku.isNotEmpty) ? existing[sku] : null;
+        if (id != null) {
+          updates.add(MapEntry(id, r));
+        } else {
+          newRows.add(r);
+        }
+      }
+
+      // 1) новые товары пачкой — фото сразу в products.image_url, как в вебе
+      if (newRows.isNotEmpty) {
+        final productsPayload = newRows
+            .map((r) => {
+                  'name': r.name,
+                  'sku': r.sku,
+                  'unit': r.unit,
+                  'category_slug': categorySlug,
+                  'image_url': (r.imageUrl == null || r.imageUrl!.isEmpty)
+                      ? null
+                      : r.imageUrl,
+                  'owner_id': uid,
+                })
+            .toList();
+        final inserted = await supabase
+            .from('products')
+            .insert(productsPayload)
+            .select('id');
+
+        // 2) к каждому — цена (порядок вставки сохраняется)
+        final offersPayload = <Map<String, dynamic>>[];
+        for (var i = 0; i < inserted.length; i++) {
+          offersPayload.add({
+            'product_id': inserted[i]['id'],
+            'supplier_id': supplierId,
+            'owner_id': uid,
+            'price': newRows[i].price,
+            'in_stock': true,
+          });
+        }
+        await supabase.from('offers').insert(offersPayload);
+      }
+
+      // 3) уже известные товары — обновляем название и цену.
+      //    Триггер в базе сам запомнит прежнюю цену и уведомит тех,
+      //    у кого товар в избранном.
+      for (final e in updates) {
+        await supabase.from('products').update({
+          'name': e.value.name,
+          'unit': e.value.unit,
+          if (e.value.imageUrl != null && e.value.imageUrl!.isNotEmpty)
+            'image_url': e.value.imageUrl,
+        }).eq('id', e.key);
+
+        final offer = await supabase
+            .from('offers')
+            .select('id')
+            .eq('product_id', e.key)
+            .eq('supplier_id', supplierId)
+            .maybeSingle();
+
+        if (offer == null) {
+          await supabase.from('offers').insert({
+            'product_id': e.key,
+            'supplier_id': supplierId,
+            'owner_id': uid,
+            'price': e.value.price,
+            'in_stock': true,
+          });
+        } else {
+          await supabase
+              .from('offers')
+              .update({'price': e.value.price, 'in_stock': true})
+              .eq('id', offer['id']);
+        }
+      }
+
+      return newRows.length + updates.length;
     } catch (e) {
       throw _dbFail(e, 'Не удалось загрузить прайс');
     }
