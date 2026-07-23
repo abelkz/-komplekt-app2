@@ -9,7 +9,7 @@ import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/product.dart';
 import '../../suppliers_map/domain/supplier.dart';
 import 'supplier_cabinet_providers.dart';
-import 'widgets/add_product_sheet.dart';
+import 'widgets/catalog_pick_sheet.dart';
 import 'widgets/import_price_sheet.dart';
 import 'widgets/product_edit_row.dart';
 
@@ -295,7 +295,7 @@ class _CabinetBody extends ConsumerWidget {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Добавить товар'),
-                  onPressed: () => showAddProductSheet(context, company.id),
+                  onPressed: () => showCatalogPickSheet(context, company.id),
                 ),
               ),
             ],

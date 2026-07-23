@@ -75,6 +75,22 @@ class CabinetController extends AsyncNotifier<void> {
             imageUrl: imageUrl,
           ));
 
+  /// Своя цена к уже существующей карточке общего каталога.
+  Future<bool> addOfferToProduct({
+    required String productId,
+    required String supplierId,
+    required double price,
+    required bool inStock,
+    String? supplierSku,
+  }) =>
+      _run(() => ref.read(supplierCabinetRepositoryProvider).addOfferToProduct(
+            productId: productId,
+            supplierId: supplierId,
+            price: price,
+            inStock: inStock,
+            supplierSku: supplierSku,
+          ));
+
   Future<bool> updateProduct({
     required String productId,
     required String name,

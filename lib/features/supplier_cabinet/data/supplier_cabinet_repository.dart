@@ -39,6 +39,52 @@ class PriceRow {
   final String? imageUrl;
 }
 
+/// Найденная в общем каталоге карточка — к ней поставщик добавляет свою цену.
+class CatalogMatch {
+  const CatalogMatch({
+    required this.id,
+    required this.name,
+    this.sku,
+    this.unit = 'шт',
+    this.imageUrl,
+    this.categorySlug,
+    this.brandName,
+    this.offersCount = 0,
+    this.minPrice,
+    this.mine = false,
+  });
+
+  final String id;
+  final String name;
+
+  /// Артикул производителя — по нему карточки и объединяются
+  final String? sku;
+  final String unit;
+  final String? imageUrl;
+  final String? categorySlug;
+  final String? brandName;
+
+  /// Сколько поставщиков уже продают этот товар
+  final int offersCount;
+  final double? minPrice;
+
+  /// У меня уже есть предложение на этот товар
+  final bool mine;
+
+  factory CatalogMatch.fromMap(Map<String, dynamic> m) => CatalogMatch(
+        id: m['id'].toString(),
+        name: m['name'] as String? ?? '',
+        sku: m['sku'] as String?,
+        unit: m['unit'] as String? ?? 'шт',
+        imageUrl: m['image_url'] as String?,
+        categorySlug: m['category_slug'] as String?,
+        brandName: m['brand_name'] as String?,
+        offersCount: (m['offers_count'] as num?)?.toInt() ?? 0,
+        minPrice: (m['min_price'] as num?)?.toDouble(),
+        mine: m['mine'] as bool? ?? false,
+      );
+}
+
 /// Статистика по товару (просмотры/контакты).
 class ProductStat {
   const ProductStat(this.views, this.contacts);
@@ -112,22 +158,121 @@ class SupplierCabinetRepository {
     }
   }
 
-  /// Мои товары (созданные мной) с моей ценой и фото.
+  /// Мой ассортимент — товары, на которые у меня есть предложение.
+  ///
+  /// Идём от предложений, а не от карточек: в общем каталоге поставщик
+  /// продаёт и то, что завёл сам, и то, что до него завёл кто-то другой.
+  /// Карточка одна, фото одно, а цены у каждого свои.
   Future<List<Product>> myProducts() async {
     final uid = _uid;
     if (uid == null) return [];
     try {
       final rows = await supabase
-          .from('products')
-          .select('id,name,sku,unit,color,image_url,category_slug,'
-              'brands(name),'
-              'product_images(url,sort),'
-              'offers(id,price,prev_price,in_stock,price_updated_at,supplier_id)')
+          .from('offers')
+          .select('id,price,prev_price,in_stock,price_updated_at,supplier_id,'
+              'supplier_sku,'
+              'products(id,name,sku,unit,color,image_url,category_slug,owner_id,'
+              'brands(name),product_images(url,sort))')
           .eq('owner_id', uid)
           .order('id', ascending: false);
-      return rows.map<Product>((m) => Product.fromMap(m)).toList();
+
+      final result = <Product>[];
+      for (final row in rows) {
+        final p = row['products'];
+        if (p is! Map<String, dynamic>) continue;
+        // Прикладываем к карточке только моё предложение: в кабинете
+        // поставщик правит свою цену, а не чужие.
+        final map = Map<String, dynamic>.from(p);
+        map['offers'] = [
+          {
+            'id': row['id'],
+            'price': row['price'],
+            'prev_price': row['prev_price'],
+            'in_stock': row['in_stock'],
+            'price_updated_at': row['price_updated_at'],
+            'supplier_id': row['supplier_id'],
+            'supplier_sku': row['supplier_sku'],
+          }
+        ];
+        result.add(Product.fromMap(map));
+      }
+      return result;
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить товары');
+    }
+  }
+
+  /// Поиск по общему каталогу — чтобы поставщик не заводил дубль карточки,
+  /// а добавил свою цену к существующей.
+  Future<List<CatalogMatch>> searchCatalog(String query, String supplierId) async {
+    if (query.trim().length < 2) return const [];
+    try {
+      final rows = await supabase.rpc('catalog_search', params: {
+        'p_query': query.trim(),
+        'p_supplier': int.tryParse(supplierId) ?? supplierId,
+      });
+      return (rows as List)
+          .map((r) => CatalogMatch.fromMap(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } catch (e) {
+      // Функции ещё нет (миграция 0013) — ищем по названию напрямую
+      try {
+        final rows = await supabase
+            .from('products')
+            .select('id,name,sku,unit,image_url,category_slug,brands(name)')
+            .or('name.ilike.%${query.trim()}%,sku.ilike.%${query.trim()}%')
+            .limit(20);
+        return rows
+            .map((r) => CatalogMatch(
+                  id: r['id'].toString(),
+                  name: r['name'] as String? ?? '',
+                  sku: r['sku'] as String?,
+                  unit: r['unit'] as String? ?? 'шт',
+                  imageUrl: r['image_url'] as String?,
+                  categorySlug: r['category_slug'] as String?,
+                  brandName: (r['brands'] is Map)
+                      ? r['brands']['name'] as String?
+                      : null,
+                ))
+            .toList();
+      } catch (_) {
+        return const [];
+      }
+    }
+  }
+
+  /// Добавить своё предложение к существующей карточке каталога.
+  Future<void> addOfferToProduct({
+    required String productId,
+    required String supplierId,
+    required double price,
+    required bool inStock,
+    String? supplierSku,
+  }) async {
+    final uid = await _requireSession();
+    try {
+      final existing = await supabase
+          .from('offers')
+          .select('id')
+          .eq('product_id', productId)
+          .eq('supplier_id', supplierId)
+          .maybeSingle();
+      if (existing != null) {
+        throw const Failure('Этот товар уже есть в вашем прайсе');
+      }
+      await supabase.from('offers').insert({
+        'product_id': productId,
+        'supplier_id': supplierId,
+        'owner_id': uid,
+        'price': price,
+        'in_stock': inStock,
+        if (supplierSku != null && supplierSku.isNotEmpty)
+          'supplier_sku': supplierSku,
+      });
+    } on Failure {
+      rethrow;
+    } catch (e) {
+      throw _dbFail(e, 'Не удалось добавить цену');
     }
   }
 
@@ -243,9 +388,11 @@ class SupplierCabinetRepository {
     final uid = await _requireSession();
     if (rows.isEmpty) return 0;
     try {
-      // 0) Что из прайса уже есть в каталоге этого поставщика.
-      //    Ищем по артикулу — это код товара у поставщика, по нему
-      //    прайс и обновляют. Иначе повторная загрузка плодила бы дубли.
+      // 0) Что из прайса уже есть в ОБЩЕМ каталоге.
+      //
+      //    Ищем по артикулу производителя во всех карточках, а не только
+      //    в своих: если этот керамогранит уже завёл другой поставщик,
+      //    мы должны добавить цену к его карточке, а не плодить дубль.
       final skus = rows
           .map((r) => r.sku?.trim())
           .whereType<String>()
@@ -253,12 +400,11 @@ class SupplierCabinetRepository {
           .toSet()
           .toList();
 
-      final existing = <String, dynamic>{}; // артикул -> id товара
+      final existing = <String, dynamic>{}; // артикул -> id карточки
       if (skus.isNotEmpty) {
         final found = await supabase
             .from('products')
             .select('id,sku')
-            .eq('owner_id', uid)
             .inFilter('sku', skus);
         for (final row in found) {
           final sku = row['sku']?.toString();
@@ -311,17 +457,12 @@ class SupplierCabinetRepository {
         await supabase.from('offers').insert(offersPayload);
       }
 
-      // 3) уже известные товары — обновляем название и цену.
+      // 3) карточка уже в каталоге — трогаем только своё предложение.
+      //    Чужую карточку не переписываем: название и фото там общие,
+      //    и правит их тот, кто её завёл (или администратор).
       //    Триггер в базе сам запомнит прежнюю цену и уведомит тех,
       //    у кого товар в избранном.
       for (final e in updates) {
-        await supabase.from('products').update({
-          'name': e.value.name,
-          'unit': e.value.unit,
-          if (e.value.imageUrl != null && e.value.imageUrl!.isNotEmpty)
-            'image_url': e.value.imageUrl,
-        }).eq('id', e.key);
-
         final offer = await supabase
             .from('offers')
             .select('id')
@@ -329,6 +470,7 @@ class SupplierCabinetRepository {
             .eq('supplier_id', supplierId)
             .maybeSingle();
 
+        final sku = e.value.sku?.trim();
         if (offer == null) {
           await supabase.from('offers').insert({
             'product_id': e.key,
@@ -336,12 +478,14 @@ class SupplierCabinetRepository {
             'owner_id': uid,
             'price': e.value.price,
             'in_stock': true,
+            if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
           });
         } else {
-          await supabase
-              .from('offers')
-              .update({'price': e.value.price, 'in_stock': true})
-              .eq('id', offer['id']);
+          await supabase.from('offers').update({
+            'price': e.value.price,
+            'in_stock': true,
+            if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
+          }).eq('id', offer['id']);
         }
       }
 
