@@ -8,6 +8,7 @@ import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/launchers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../favorites/presentation/favorites_providers.dart';
@@ -161,7 +162,30 @@ class ProfileScreen extends ConsumerWidget {
               onPressed: () => _deleteAccountDialog(context, ref),
               child: const Text('Удалить аккаунт'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
+            // Документы обязаны быть доступны из приложения — это требование
+            // App Store и Google Play, а по закону о персональных данных
+            // человек должен видеть, на что он согласился.
+            Center(
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () =>
+                        Launchers.website('https://abelkz.github.io/komplekt/privacy.html'),
+                    child: Text('Политика конфиденциальности',
+                        style: TextStyle(fontSize: 12, color: c.gray)),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        Launchers.website('https://abelkz.github.io/komplekt/terms.html'),
+                    child: Text('Условия использования',
+                        style: TextStyle(fontSize: 12, color: c.gray)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
             // По этой строке видно, свежая версия открыта или старая из кэша
             Center(
               child: Text(BuildInfo.label,
