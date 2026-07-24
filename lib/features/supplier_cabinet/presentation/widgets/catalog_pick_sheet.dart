@@ -83,7 +83,10 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-      child: Column(
+      // Прокрутка внутри листа: при открытии клавиатуры содержимое
+      // не «улетает» и не раздувается на весь экран.
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -120,17 +123,10 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
           const SizedBox(height: 12),
 
           if (_found.isNotEmpty)
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: _found.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _MatchRow(
-                  match: _found[i],
-                  onTap: () => _addPrice(_found[i]),
-                ),
-              ),
-            )
+            ..._found.expand((m) => [
+                  _MatchRow(match: m, onTap: () => _addPrice(m)),
+                  const SizedBox(height: 8),
+                ])
           else if (_searched && !_searching)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -156,6 +152,7 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -311,7 +308,8 @@ class _PriceForMatchSheetState extends ConsumerState<_PriceForMatchSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -371,6 +369,7 @@ class _PriceForMatchSheetState extends ConsumerState<_PriceForMatchSheet> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
