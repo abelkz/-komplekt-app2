@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/build_info.dart';
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
@@ -34,7 +35,11 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: ListView(
+        // Потянуть вниз — перечитать профиль: так виден только что
+        // включённый тариф, без перезапуска приложения
+        child: RefreshIndicator(
+          onRefresh: () async => refreshAppData(ref),
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
           children: [
             Text('Профиль', style: AppTypography.unbounded()),
@@ -211,6 +216,7 @@ class ProfileScreen extends ConsumerWidget {
                   style: TextStyle(fontSize: 11, color: c.faint)),
             ),
           ],
+          ),
         ),
       ),
     );

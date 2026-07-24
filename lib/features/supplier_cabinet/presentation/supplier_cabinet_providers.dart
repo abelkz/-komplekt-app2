@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../auth/presentation/auth_providers.dart';
@@ -44,8 +45,9 @@ class CabinetController extends AsyncNotifier<void> {
     state = const AsyncLoading();
     try {
       await action();
-      ref.invalidate(myProductsProvider);
-      ref.invalidate(myStatsProvider);
+      // Цена меняется не только в кабинете: карточка товара, лента и
+      // поиск показывают её же — обновляем всё, что могло устареть
+      invalidateAppData(ref);
       state = const AsyncData(null);
       return true;
     } catch (e, st) {

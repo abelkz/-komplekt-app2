@@ -7,7 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/env.dart';
 import 'core/config/local_store.dart';
+import 'core/config/supabase_client.dart';
 import 'core/demo/demo_repositories.dart';
+import 'core/providers/data_refresh.dart';
 import 'core/providers/providers.dart';
 import 'core/providers/settings_provider.dart';
 import 'core/push/push_service.dart';
@@ -57,11 +59,78 @@ Future<void> main() async {
   );
 }
 
-class KomplektApp extends ConsumerWidget {
+class KomplektApp extends ConsumerStatefulWidget {
   const KomplektApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<KomplektApp> createState() => _KomplektAppState();
+}
+
+class _KomplektAppState extends ConsumerState<KomplektApp>
+    with WidgetsBindingObserver {
+  RealtimeChannel? _profileChannel;
+  String? _watchedUid;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _watchProfile(Env.demoMode ? null : supabase.auth.currentUser?.id));
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _watchProfile(null);
+    super.dispose();
+  }
+
+  /// Слежение за своим профилем: администратор включил тариф — приложение
+  /// узнаёт об этом сразу, а не после перезапуска. Realtime не критичен:
+  /// если он недоступен, остаются обновление при возврате и «потянуть вниз».
+  void _watchProfile(String? uid) {
+    if (Env.demoMode || uid == _watchedUid) return;
+
+    final old = _profileChannel;
+    if (old != null) {
+      try {
+        supabase.removeChannel(old);
+      } catch (_) {}
+    }
+    _profileChannel = null;
+    _watchedUid = uid;
+    if (uid == null) return;
+
+    try {
+      _profileChannel = supabase
+          .channel('profile:$uid')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'profiles',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'id',
+              value: uid,
+            ),
+            callback: (_) {
+              if (mounted) ref.invalidate(myProfileProvider);
+            },
+          )
+          .subscribe();
+    } catch (_) {/* работаем без Realtime */}
+  }
+
+  /// Вернулись в приложение (или к вкладке браузера) — перечитываем данные.
+  /// Раньше цену или включённый тариф было видно только после перезапуска.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refreshAppData(ref);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
 
@@ -72,8 +141,10 @@ class KomplektApp extends ConsumerWidget {
           event == AuthChangeEvent.initialSession ||
           event == AuthChangeEvent.tokenRefreshed) {
         PushService.syncToken();
+        _watchProfile(next.valueOrNull?.session?.user.id);
       } else if (event == AuthChangeEvent.signedOut) {
         PushService.clearToken();
+        _watchProfile(null);
       }
     });
 

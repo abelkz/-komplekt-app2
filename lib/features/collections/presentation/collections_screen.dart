@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
@@ -54,11 +55,14 @@ class CollectionsScreen extends ConsumerWidget {
                 ),
                 // Показываем и пустые подборки — иначе после создания
                 // на экране ничего не появляется и кажется, что зависло.
-                data: (list) => ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  children: [
-                    for (final col in list) _CollectionBlock(collection: col),
-                  ],
+                data: (list) => RefreshIndicator(
+                  onRefresh: () async => refreshAppData(ref),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    children: [
+                      for (final col in list) _CollectionBlock(collection: col),
+                    ],
+                  ),
                 ),
               ),
             ),
