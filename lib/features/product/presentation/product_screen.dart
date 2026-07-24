@@ -471,35 +471,38 @@ class _OfferCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
+          Align(
+            alignment: Alignment.centerLeft,
+            child: offer.inStock
+                ? _StatusBadge('✓ в наличии', c.green, c.greenSoft)
+                : _StatusBadge('под заказ', c.red, c.redSoft),
+          ),
+          const SizedBox(height: 10),
+          // Кнопки связи — переносом, чтобы на узких экранах не вылезали
+          // за край (раньше был красный «overflow» и WhatsApp обрезался).
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              offer.inStock
-                  ? _StatusBadge('✓ в наличии', c.green, c.greenSoft)
-                  : _StatusBadge('под заказ', c.red, c.redSoft),
-              const Spacer(),
               if (offer.phone != null)
                 _MiniButton(
                   icon: Icons.call_outlined,
                   label: 'Звонок',
                   onTap: () => contact(() => Launchers.call(offer.phone!)),
                 ),
-              if (offer.whatsapp != null) ...[
-                const SizedBox(width: 8),
+              if (offer.whatsapp != null)
                 _MiniButton(
                   icon: Icons.chat_outlined,
                   label: 'WhatsApp',
                   onTap: () => contact(() => Launchers.whatsapp(offer.whatsapp!,
                       text: 'Здравствуйте! Интересует «$productName»')),
                 ),
-              ],
-              if (offer.website != null) ...[
-                const SizedBox(width: 8),
+              if (offer.website != null)
                 _MiniButton(
                   icon: Icons.link_rounded,
                   label: 'Сайт',
                   onTap: () => contact(() => Launchers.website(offer.website!)),
                 ),
-              ],
             ],
           ),
         ],

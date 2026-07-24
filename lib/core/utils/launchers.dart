@@ -26,9 +26,17 @@ class Launchers {
   static String _digits(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
 
   static Future<bool> _open(Uri uri) async {
-    if (await canLaunchUrl(uri)) {
-      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Без проверки canLaunchUrl: на Android 11+ она возвращает false,
+    // если в манифесте нет <queries>, и ссылка/звонок/WhatsApp молча не
+    // открывались. Пробуем запустить сразу, при неудаче — режим по умолчанию.
+    try {
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        return await launchUrl(uri);
+      } catch (_) {
+        return false;
+      }
     }
-    return false;
   }
 }
