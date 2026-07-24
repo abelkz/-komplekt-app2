@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/env.dart';
@@ -16,6 +17,7 @@ import 'core/push/push_service.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/auth_providers.dart';
+import 'features/notifications/presentation/notifications_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +61,10 @@ Future<void> main() async {
   );
 }
 
+/// Глобальный ключ — показывать уведомление о снижении цены из любого места,
+/// даже когда пользователь не на конкретном экране.
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class KomplektApp extends ConsumerStatefulWidget {
   const KomplektApp({super.key});
 
@@ -69,6 +75,7 @@ class KomplektApp extends ConsumerStatefulWidget {
 class _KomplektAppState extends ConsumerState<KomplektApp>
     with WidgetsBindingObserver {
   RealtimeChannel? _profileChannel;
+  RealtimeChannel? _dropsChannel;
   String? _watchedUid;
 
   @override
@@ -76,29 +83,34 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _watchProfile(Env.demoMode ? null : supabase.auth.currentUser?.id));
+        (_) => _watchForUser(Env.demoMode ? null : supabase.auth.currentUser?.id));
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _watchProfile(null);
+    _watchForUser(null);
     super.dispose();
   }
 
-  /// Слежение за своим профилем: администратор включил тариф — приложение
-  /// узнаёт об этом сразу, а не после перезапуска. Realtime не критичен:
-  /// если он недоступен, остаются обновление при возврате и «потянуть вниз».
-  void _watchProfile(String? uid) {
+  /// Живое слежение за своими данными через Realtime:
+  ///  • профиль — чтобы включённый тариф появлялся сразу;
+  ///  • price_drops — чтобы уведомление о снижении цены на избранный товар
+  ///    приходило в момент изменения, а не когда сам зайдёшь в раздел.
+  /// Realtime не критичен: без него остаются обновление при возврате и
+  /// «потянуть вниз».
+  void _watchForUser(String? uid) {
     if (Env.demoMode || uid == _watchedUid) return;
 
-    final old = _profileChannel;
-    if (old != null) {
-      try {
-        supabase.removeChannel(old);
-      } catch (_) {}
+    for (final ch in [_profileChannel, _dropsChannel]) {
+      if (ch != null) {
+        try {
+          supabase.removeChannel(ch);
+        } catch (_) {}
+      }
     }
     _profileChannel = null;
+    _dropsChannel = null;
     _watchedUid = uid;
     if (uid == null) return;
 
@@ -119,7 +131,51 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
             },
           )
           .subscribe();
+
+      _dropsChannel = supabase
+          .channel('drops:$uid')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'price_drops',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'user_id',
+              value: uid,
+            ),
+            callback: _onPriceDrop,
+          )
+          .subscribe();
     } catch (_) {/* работаем без Realtime */}
+  }
+
+  /// Новое снижение цены на избранный товар: обновляем колокол и показываем
+  /// всплывающее уведомление с переходом в раздел.
+  void _onPriceDrop(PostgresChangePayload payload) {
+    if (!mounted) return;
+    ref.invalidate(notificationsProvider);
+    ref.invalidate(unreadCountProvider);
+
+    final rec = payload.newRecord;
+    final name = rec['product_name']?.toString() ?? 'Товар';
+    final oldP = (rec['old_price'] as num?)?.toDouble();
+    final newP = (rec['new_price'] as num?)?.toDouble();
+    final pct = (oldP != null && oldP > 0 && newP != null)
+        ? (100 - newP / oldP * 100).round()
+        : null;
+
+    scaffoldMessengerKey.currentState
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(pct != null
+            ? '$name подешевел на $pct%'
+            : '$name подешевел'),
+        action: SnackBarAction(
+          label: 'Смотреть',
+          onPressed: () =>
+              rootNavigatorKey.currentContext?.push(Routes.notifications),
+        ),
+      ));
   }
 
   /// Вернулись в приложение (или к вкладке браузера) — перечитываем данные.
@@ -141,16 +197,17 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
           event == AuthChangeEvent.initialSession ||
           event == AuthChangeEvent.tokenRefreshed) {
         PushService.syncToken();
-        _watchProfile(next.valueOrNull?.session?.user.id);
+        _watchForUser(next.valueOrNull?.session?.user.id);
       } else if (event == AuthChangeEvent.signedOut) {
         PushService.clearToken();
-        _watchProfile(null);
+        _watchForUser(null);
       }
     });
 
     return MaterialApp.router(
       title: 'КОМПЛЕКТ',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
