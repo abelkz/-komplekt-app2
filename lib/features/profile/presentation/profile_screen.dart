@@ -12,6 +12,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/launchers.dart';
+import '../../admin/presentation/admin_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../favorites/presentation/favorites_providers.dart';
@@ -122,6 +123,17 @@ class ProfileScreen extends ConsumerWidget {
                 'прайс и товары',
                 onTap: () => context.push(Routes.supplierCabinet),
               ),
+              // Пункт есть только у администратора: остальным база всё
+              // равно ничего не отдаст, но и показывать его незачем
+              if (ref.watch(isAdminProvider))
+                _MenuItemData(
+                  'Панель администратора',
+                  () {
+                    final n = ref.watch(adminPendingCountProvider);
+                    return n == 0 ? 'заявки и тарифы' : 'ждут решения: $n';
+                  }(),
+                  onTap: () => context.push(Routes.admin),
+                ),
             ]),
             const SizedBox(height: 12),
 

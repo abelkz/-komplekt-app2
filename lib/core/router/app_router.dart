@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/admin/presentation/admin_screen.dart';
 import '../../features/auth/presentation/auth_providers.dart';
 import '../../features/auth/presentation/auth_screen.dart';
 import '../../features/catalog/presentation/catalog_screen.dart';
@@ -35,6 +36,7 @@ class Routes {
   static const supplierCabinet = '/supplier-cabinet';
   static const notifications = '/notifications';
   static const visualSearch = '/visual-search';
+  static const admin = '/admin';
 
   /// Платный тариф. `for=supplier` — предложение для компаний,
   /// без параметра — для дизайнеров и прорабов.
@@ -154,6 +156,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: rootNavigatorKey,
         builder: (_, state) =>
             SupplierScreen(supplierId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: Routes.admin,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const AdminScreen(),
       ),
       GoRoute(
         path: Routes.visualSearch,

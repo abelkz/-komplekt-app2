@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/admin/presentation/admin_providers.dart';
 import '../../features/auth/presentation/auth_providers.dart';
 import '../../features/catalog/presentation/catalog_providers.dart';
 import '../../features/collections/presentation/collections_providers.dart';
@@ -42,6 +43,10 @@ final _volatile = <ProviderOrFamily>[
   myCompanyProvider,
   myProductsProvider,
   myStatsProvider,
+
+  // Панель администратора
+  supplierApplicationsProvider,
+  subscriptionRequestsProvider,
 
   // Поставщики
   nearbySuppliersProvider,
