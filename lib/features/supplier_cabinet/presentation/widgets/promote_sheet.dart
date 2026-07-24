@@ -84,8 +84,9 @@ class _PromoteSheet extends ConsumerWidget {
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Text(
-          'Товар встанет выше в категории и поиске с пометкой «продвигается». '
-          'Цена показывается настоящая.',
+          'Ваше предложение покажется отдельной строкой сверху категории и '
+          'поиска — с вашим именем и ценой, с пометкой «продвигается». '
+          'Конкуренты в этой строке не показываются.',
           style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
         ),
         const SizedBox(height: 14),

@@ -77,34 +77,13 @@ class ProductCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          // Оплаченный показ помечаем прямо в списке —
-                          // покупатель должен видеть, что это реклама,
-                          // а не результат подбора по цене.
-                          if (product.isPromoted) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(border: Border.all(color: c.line)),
-                              child: Text('ПРОДВИГАЕТСЯ',
-                                  style: AppTypography.mono(
-                                      size: 8.5,
-                                      weight: FontWeight.w700,
-                                      color: c.faint)),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                          Flexible(
-                            child: Text(
-                              _meta(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  AppTypography.mono(size: 10.5, color: c.gray),
-                            ),
-                          ),
-                        ],
+                      // Общая карточка продвижение не помечает — оно теперь
+                      // идёт отдельной спонсорской строкой (SponsoredRow).
+                      Text(
+                        _meta(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.mono(size: 10.5, color: c.gray),
                       ),
                     ],
                   ),

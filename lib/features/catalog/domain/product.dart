@@ -2,6 +2,15 @@ import 'dart:ui' show Color;
 
 import 'offer.dart';
 
+/// Спонсорская строка: конкретное предложение поставщика, которое сейчас
+/// продвигается. Показывается отдельно от общей карточки — рекламирует
+/// одного продавца, а не всех на карточке.
+class SponsoredOffer {
+  const SponsoredOffer({required this.product, required this.offer});
+  final Product product;
+  final Offer offer;
+}
+
 /// Фото товара (таблица product_images).
 class ProductImage {
   const ProductImage({required this.url, this.sort = 0});

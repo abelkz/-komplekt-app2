@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/skeletons.dart';
+import '../data/catalog_repository.dart';
 import '../domain/product.dart';
 import 'catalog_providers.dart';
 import 'widgets/filters_sheet.dart';
 import 'widgets/product_card.dart';
+import 'widgets/sponsored_row.dart';
 
 /// Результаты поиска по строке запроса (тот же UI, что и каталог).
 class SearchResultsScreen extends ConsumerWidget {
@@ -77,12 +79,21 @@ class SearchResultsScreen extends ConsumerWidget {
           subtitle: 'Попробуйте артикул производителя или уберите фильтры.',
           icon: Icons.search_off_rounded,
         ),
-        data: (list) => ListView.separated(
-          padding: const EdgeInsets.only(top: 12, bottom: 24),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SpecDivider(),
-          itemBuilder: (_, i) => ProductCard(product: list[i], index: i),
-        ),
+        data: (list) {
+          final sponsored = CatalogRepository.sponsoredFrom(list);
+          return ListView.separated(
+            padding: const EdgeInsets.only(top: 12, bottom: 24),
+            itemCount: sponsored.length + list.length,
+            separatorBuilder: (_, __) => const SpecDivider(),
+            itemBuilder: (_, i) {
+              if (i < sponsored.length) {
+                return SponsoredRow(entry: sponsored[i]);
+              }
+              final p = list[i - sponsored.length];
+              return ProductCard(product: p, index: i - sponsored.length);
+            },
+          );
+        },
       ),
     );
   }

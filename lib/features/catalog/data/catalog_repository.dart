@@ -43,7 +43,10 @@ class CatalogRepository {
           .select(productSelect)
           .eq('category_slug', slug)
           .order('id');
-      return _promotedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
+      // Общую карточку продвижение не поднимает — она общая для всех
+      // поставщиков. Продвижение показывается отдельной спонсорской
+      // строкой (см. sponsoredInCategory).
+      return rows.map<Product>((m) => Product.fromMap(m)).toList();
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить товары');
     }
@@ -68,7 +71,7 @@ class CatalogRepository {
           .select(productSelect)
           .or(filters.join(','))
           .limit(100);
-      return _promotedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
+      return rows.map<Product>((m) => Product.fromMap(m)).toList();
     } catch (e) {
       throw mapError(e, fallback: 'Поиск не удался');
     }
@@ -96,13 +99,23 @@ class CatalogRepository {
   /// Только в списках и поиске, где нет обещания «здесь дешевле», и только
   /// с пометкой в карточке. Внутри товара шкала цен остаётся строго
   /// по цене — иначе сравнение цен перестаёт быть сравнением цен.
-  List<Product> _promotedFirst(List<Product> list) {
-    final promoted = <Product>[];
-    final rest = <Product>[];
-    for (final p in list) {
-      (p.isPromoted ? promoted : rest).add(p);
+  /// Спонсорские строки для списка товаров: каждое продвигаемое сейчас
+  /// предложение — отдельной строкой от имени своего поставщика.
+  ///
+  /// В отличие от старого «поднять карточку», это рекламирует конкретного
+  /// продавца, а не общую карточку со всеми конкурентами.
+  static List<SponsoredOffer> sponsoredFrom(List<Product> products,
+      {int limit = 3}) {
+    final result = <SponsoredOffer>[];
+    for (final p in products) {
+      for (final o in p.offers) {
+        if (o.isPromoted) result.add(SponsoredOffer(product: p, offer: o));
+      }
     }
-    return [...promoted, ...rest];
+    // Раньше истекает — выше; при равенстве неважно
+    result.sort((a, b) => (a.offer.promotedUntil ?? DateTime(2100))
+        .compareTo(b.offer.promotedUntil ?? DateTime(2100)));
+    return result.take(limit).toList();
   }
 
   /// Лента «вдохновения» для главной с пагинацией (range).
@@ -113,7 +126,7 @@ class CatalogRepository {
           .select(productSelect)
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
-      return _promotedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
+      return rows.map<Product>((m) => Product.fromMap(m)).toList();
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить ленту');
     }
