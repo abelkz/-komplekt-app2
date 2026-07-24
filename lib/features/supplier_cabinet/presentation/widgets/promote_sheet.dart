@@ -216,6 +216,20 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
   int _qty = 1;
   bool _busy = false;
 
+  // Цена Буста за один подъём по сроку
+  static const _price = {1: 1500, 3: 3500, 7: 7000};
+  int get _total => (_price[_days] ?? 0) * _qty;
+
+  static String _tg(int v) {
+    final s = v.toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(' ');
+      b.write(s[i]);
+    }
+    return '$b ₸';
+  }
+
   Future<void> _order() async {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -261,7 +275,8 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
               children: [
                 for (final d in [1, 3, 7])
                   ChoiceChip(
-                    label: Text('$d ${d == 1 ? 'день' : 'дней'}'),
+                    label: Text('$d ${d == 1 ? 'день' : 'дней'} · '
+                        '${_tg(_price[d] ?? 0)}'),
                     selected: _days == d,
                     onSelected: (_) => setState(() => _days = d),
                   ),
@@ -285,7 +300,17 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text('Итого', style: TextStyle(fontSize: 13, color: c.gray)),
+                const Spacer(),
+                Text(_tg(_total),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700)),
+              ],
+            ),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -298,7 +323,7 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
                         width: 18,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : Text('Оформить $_qty × $_days ${_days == 1 ? 'день' : 'дней'}'),
+                    : Text('Оформить на ${_tg(_total)}'),
               ),
             ),
             const SizedBox(height: 8),

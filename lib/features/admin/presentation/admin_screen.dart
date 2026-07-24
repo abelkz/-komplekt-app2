@@ -429,7 +429,8 @@ class _BoostCardState extends ConsumerState<_BoostCard> {
         const SizedBox(height: 6),
         Text(
           '${o.boostQty} × подъём на ${o.boostDays} '
-          '${o.boostDays == 1 ? 'день' : 'дней'} · ${_date(o.createdAt)}',
+          '${o.boostDays == 1 ? 'день' : 'дней'} · ${_boostSum(o)} · '
+          '${_date(o.createdAt)}',
           style: TextStyle(fontSize: 13, color: c.gray),
         ),
         if (phone.isNotEmpty) ...[
@@ -468,6 +469,19 @@ String _msg(Object e) {
 
 String _date(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+
+/// Сумма заявки на Буст по прайсу: 1 дн — 1500, 3 дн — 3500, 7 дн — 7000.
+String _boostSum(SubRequest o) {
+  const price = {1: 1500, 3: 3500, 7: 7000};
+  final total = (price[o.boostDays] ?? 0) * o.boostQty;
+  final s = total.toString();
+  final b = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write(' ');
+    b.write(s[i]);
+  }
+  return '$b ₸';
+}
 
 String _statusLabel(String s) => switch (s) {
       'contacted' => 'связались',
