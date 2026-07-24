@@ -38,9 +38,37 @@ class CollectionsRepository {
     return Collection(id: id, name: 'Мой проект');
   }
 
+  /// Сколько подборок можно завести без тарифа.
+  static const freeLimit = 3;
+
+  /// Действует ли оплаченный «КОМПЛЕКТ Про».
+  /// Колонки может не быть (миграция 0017) — тогда считаем, что тарифа нет.
+  Future<bool> _isPro(String uid) async {
+    try {
+      final p = await supabase
+          .from('profiles')
+          .select('plan,plan_until')
+          .eq('id', uid)
+          .maybeSingle();
+      if (p == null || p['plan'] != 'pro') return false;
+      final until = DateTime.tryParse(p['plan_until'] as String? ?? '');
+      return until == null || until.isAfter(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> create(String name) async {
     final uid = _uid;
     if (uid == null) throw const Failure('Войдите, чтобы создать подборку');
+
+    final mine = await supabase.from('projects').select('id').eq('user_id', uid);
+    if (mine.length >= freeLimit && !await _isPro(uid)) {
+      throw const Failure(
+          'Без тарифа можно вести $freeLimit подборки. '
+          'В КОМПЛЕКТ Про их сколько угодно');
+    }
+
     try {
       final row = await supabase
           .from('projects')

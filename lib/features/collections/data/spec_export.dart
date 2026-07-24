@@ -117,7 +117,10 @@ class SpecExport {
 
   // ───────────────────────── PDF ─────────────────────────
   /// [shareOrigin] — см. комментарий у [exportExcel] (поповер на iPad).
-  static Future<void> exportPdf(Collection c, {Rect? shareOrigin}) async {
+  /// [brand] — реквизиты, которыми подписывается спецификация. Заполнены
+  /// только у тарифа Про: клиент отдаёт PDF заказчику от своего имени.
+  static Future<void> exportPdf(Collection c,
+      {Rect? shareOrigin, SpecBrand? brand}) async {
     final rows = _rows(c);
     // Шрифты Open Sans поддерживают кириллицу
     final regular = await PdfGoogleFonts.openSansRegular();
@@ -137,7 +140,7 @@ class SpecExport {
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('КОМПЛЕКТ',
+              pw.Text(brand?.company.toUpperCase() ?? 'КОМПЛЕКТ',
                   style: pw.TextStyle(
                       fontWeight: pw.FontWeight.bold,
                       fontSize: 15,
@@ -200,6 +203,15 @@ class SpecExport {
                     pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           ),
           pw.SizedBox(height: 24),
+          if (brand != null) ...[
+            pw.Text(brand.company,
+                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+            if (brand.contacts.isNotEmpty)
+              pw.Text(brand.contacts,
+                  style: const pw.TextStyle(
+                      fontSize: 8.5, color: PdfColor.fromInt(grayInt))),
+            pw.SizedBox(height: 6),
+          ],
           pw.Text(
             'Сформировано в приложении КОМПЛЕКТ · цены могли измениться, '
             'актуальность уточняйте у поставщика',
@@ -217,6 +229,18 @@ class SpecExport {
       bounds: shareOrigin,
     );
   }
+}
+
+/// Чьими реквизитами подписана спецификация.
+class SpecBrand {
+  const SpecBrand({required this.company, this.phone, this.email});
+
+  final String company;
+  final String? phone;
+  final String? email;
+
+  String get contacts =>
+      [phone, email].where((s) => s != null && s.isNotEmpty).join(' · ');
 }
 
 class _Row {

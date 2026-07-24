@@ -20,6 +20,7 @@ import '../../collections/presentation/collections_providers.dart';
 import '../../collections/presentation/widgets/collection_picker.dart';
 import '../../favorites/presentation/favorites_providers.dart';
 import 'product_providers.dart';
+import 'widgets/price_history_section.dart';
 import 'widgets/reviews_section.dart';
 
 /// Экран 5 — Карточка товара: фото, характеристики, сравнение цен,
@@ -206,6 +207,8 @@ class _ProductBody extends StatelessWidget {
             productId: product.id,
             productName: product.name,
           ),
+        const SizedBox(height: 18),
+        PriceHistorySection(productId: product.id),
         const SizedBox(height: 18),
         ReviewsSection(productId: product.id),
       ],

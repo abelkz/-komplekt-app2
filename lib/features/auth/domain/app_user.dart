@@ -11,6 +11,8 @@ class AppUser {
     this.notifyEnabled = true,
     this.notifyThreshold = 1,
     this.avatarUrl,
+    this.plan = 'free',
+    this.planUntil,
   });
 
   final String id;
@@ -25,6 +27,16 @@ class AppUser {
   final bool notifyEnabled; // уведомления о снижении цены
   final int notifyThreshold; // минимальный % снижения для уведомления
   final String? avatarUrl;
+
+  /// Тариф самого пользователя: free | pro. У поставщика тариф компании
+  /// живёт отдельно, в suppliers.plan — он про продвижение и значок.
+  final String plan;
+  final DateTime? planUntil;
+
+  /// Оплаченный «КОМПЛЕКТ Про» действует. Пустая дата — бессрочно.
+  bool get isPro =>
+      plan == 'pro' &&
+      (planUntil == null || planUntil!.isAfter(DateTime.now()));
 
   bool get isSupplier => role == 'supplier' || role == 'admin';
   bool get isApproved => status == 'approved' || role == 'admin';
@@ -55,6 +67,8 @@ class AppUser {
       notifyEnabled: m['notify_price_drops'] as bool? ?? true,
       notifyThreshold: (m['notify_threshold'] as num?)?.toInt() ?? 1,
       avatarUrl: m['avatar_url'] as String?,
+      plan: m['plan'] as String? ?? 'free',
+      planUntil: DateTime.tryParse(m['plan_until'] as String? ?? ''),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/offer.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/widgets/product_thumb.dart';
@@ -278,8 +279,12 @@ class _CollectionBlock extends ConsumerWidget {
                 child: _ExportButton(
                   icon: Icons.picture_as_pdf_outlined,
                   label: 'PDF',
+                  // По тарифу спецификация уходит заказчику под реквизитами
+                  // самого дизайнера, без тарифа — под нашими
                   onTap: () => _export(
-                      context, (o) => SpecExport.exportPdf(collection, shareOrigin: o)),
+                      context,
+                      (o) => SpecExport.exportPdf(collection,
+                          shareOrigin: o, brand: _brandOf(ref))),
                 ),
               ),
             ],
@@ -288,6 +293,15 @@ class _CollectionBlock extends ConsumerWidget {
         ],
       ],
     );
+  }
+
+  /// Реквизиты для подписи PDF — только у активного тарифа Про.
+  static SpecBrand? _brandOf(WidgetRef ref) {
+    final me = ref.read(myProfileProvider).valueOrNull;
+    if (me == null || !me.isPro) return null;
+    final company = me.company.isNotEmpty ? me.company : me.fullName;
+    if (company.isEmpty) return null;
+    return SpecBrand(company: company, phone: me.phone);
   }
 
   /// Переименование подборки.

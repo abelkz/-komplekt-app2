@@ -1,3 +1,5 @@
+import 'dart:math' show max;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -135,15 +137,20 @@ class ProfileScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('★ КОМПЛЕКТ Pro',
+                          Text(
+                              profile.valueOrNull?.isPro == true
+                                  ? '★ КОМПЛЕКТ Pro подключён'
+                                  : '★ КОМПЛЕКТ Pro',
                               style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 14,
                                   color: c.orange)),
                           const SizedBox(height: 4),
                           Text(
-                            'Брендированные PDF-спецификации, история цен '
-                            'и безлимитные подборки — 4 900 ₸/мес.',
+                            profile.valueOrNull?.isPro == true
+                                ? _proUntilText(profile.valueOrNull!.planUntil)
+                                : 'Брендированные PDF-спецификации, история цен '
+                                    'и безлимитные подборки — 4 900 ₸/мес.',
                             style: TextStyle(
                                 fontSize: 12, color: c.orange, height: 1.4),
                           ),
@@ -209,11 +216,23 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  static String _proUntilText(DateTime? until) {
+    if (until == null) return 'Все возможности тарифа открыты.';
+    final d = until.toLocal();
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    return 'Действует до $dd.$mm.${d.year}. Все возможности открыты.';
+  }
+
   void _notifyDialog(BuildContext context, WidgetRef ref) {
     final saved = ref.read(settingsProvider);
+    final isPro = ref.read(myProfileProvider).valueOrNull?.isPro ?? false;
     bool enabled = saved.notifyEnabled;
-    int threshold = saved.notifyThreshold;
+    // Без тарифа ловим только заметные скидки, с тарифом — любые
     const options = [1, 5, 10, 20];
+    const freeMin = 10;
+    int threshold =
+        isPro ? saved.notifyThreshold : max(saved.notifyThreshold, freeMin);
 
     showModalBottomSheet(
       context: context,
@@ -246,13 +265,31 @@ class ProfileScreen extends ConsumerWidget {
                   children: [
                     for (final o in options)
                       ChoiceChip(
+                        avatar: (!isPro && o < freeMin)
+                            ? Icon(Icons.lock_outline, size: 16, color: c.gray)
+                            : null,
                         label: Text('от $o%'),
                         selected: threshold == o,
-                        onSelected:
-                            enabled ? (_) => setSheet(() => threshold = o) : null,
+                        onSelected: !enabled
+                            ? null
+                            : (_) {
+                                if (!isPro && o < freeMin) {
+                                  Navigator.pop(ctx);
+                                  context.push(Routes.plans());
+                                  return;
+                                }
+                                setSheet(() => threshold = o);
+                              },
                       ),
                   ],
                 ),
+                if (!isPro) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Порог ниже $freeMin% — в тарифе КОМПЛЕКТ Про',
+                    style: TextStyle(fontSize: 12, color: c.gray),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
