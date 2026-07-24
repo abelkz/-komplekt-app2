@@ -83,10 +83,11 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-      // Прокрутка внутри листа: при открытии клавиатуры содержимое
-      // не «улетает» и не раздувается на весь экран.
-      child: SingleChildScrollView(
-        child: Column(
+      // Компактный лист: viewInsets поднимает его над клавиатурой целиком,
+      // а список результатов прокручивается в своей ограниченной высоте.
+      // Без внешнего SingleChildScrollView — иначе автофокус уносил поле
+      // за верхнюю грань экрана.
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -123,10 +124,18 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
           const SizedBox(height: 12),
 
           if (_found.isNotEmpty)
-            ..._found.expand((m) => [
-                  _MatchRow(match: m, onTap: () => _addPrice(m)),
-                  const SizedBox(height: 8),
-                ])
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: _found.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) => _MatchRow(
+                  match: _found[i],
+                  onTap: () => _addPrice(_found[i]),
+                ),
+              ),
+            )
           else if (_searched && !_searching)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -152,7 +161,6 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
             ),
           ),
         ],
-        ),
       ),
     );
   }
@@ -308,8 +316,7 @@ class _PriceForMatchSheetState extends ConsumerState<_PriceForMatchSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
-      child: SingleChildScrollView(
-        child: Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -369,7 +376,6 @@ class _PriceForMatchSheetState extends ConsumerState<_PriceForMatchSheet> {
             ),
           ),
         ],
-        ),
       ),
     );
   }
