@@ -53,8 +53,10 @@ jobs:
           fi
 
       - name: Generate web platform folder
-        # web/ в репозитории не хранится — генерируем, как android/ и ios/
-        run: flutter create . --platforms=web
+        # web/ в репозитории не хранится — генерируем.
+        # android/ios тоже создаём: без них генератор иконок падает на
+        # Android («AndroidManifest.xml not found») и не доходит до web-иконок.
+        run: flutter create . --platforms=web,android,ios
 
       - name: Заставка на время загрузки
         # Без неё Safari несколько секунд показывает пустой чёрный экран.
