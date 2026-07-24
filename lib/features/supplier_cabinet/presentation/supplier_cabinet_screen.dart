@@ -292,38 +292,6 @@ class _CabinetBody extends ConsumerWidget {
                                     fontWeight: FontWeight.w700,
                                     color: c.green)),
                           ),
-                        // Плашка тарифа открывает описание и оформление
-                        InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: () => context.push(Routes.plans(
-                              forSupplier: true, supplierId: company.id)),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 3),
-                            decoration: BoxDecoration(
-                                color: company.isPro ? c.orangeSoft : c.field,
-                                borderRadius: BorderRadius.circular(999)),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                    company.isPro
-                                        ? '★ тариф Pro'
-                                        : 'тариф Free — подключить',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: company.isPro
-                                            ? c.orange
-                                            : c.gray)),
-                                const SizedBox(width: 2),
-                                Icon(Icons.chevron_right,
-                                    size: 14,
-                                    color: company.isPro ? c.orange : c.gray),
-                              ],
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ],
@@ -331,6 +299,9 @@ class _CabinetBody extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 14),
+          // Заметный баннер тарифа Pro — раньше был крохотной плашкой
+          _SupplierProBanner(company: company),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -421,5 +392,78 @@ class _CabinetBody extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// Заметный баннер тарифа Pro для поставщика.
+/// Без тарифа — яркий призыв с выгодами; с тарифом — спокойный статус.
+class _SupplierProBanner extends StatelessWidget {
+  const _SupplierProBanner({required this.company});
+  final Supplier company;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final pro = company.isPro;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      onTap: () => context.push(
+          Routes.plans(forSupplier: true, supplierId: company.id)),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          // Без тарифа — заливка акцентом, чтобы бросалось в глаза
+          color: pro ? c.orangeSoft : c.orange,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(color: c.orange, width: pro ? 1 : 0),
+        ),
+        child: Row(
+          children: [
+            Icon(pro ? Icons.workspace_premium : Icons.rocket_launch,
+                color: pro ? c.orange : AppColors.brandInk, size: 26),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    pro ? 'Тариф Pro подключён' : 'Подключите тариф Pro',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: pro ? c.orange : AppColors.brandInk),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    pro
+                        ? _untilText(company.planUntil)
+                        : 'Продвижение товаров, значок «проверенный», '
+                            'статистика спроса и прайс без ограничений.',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        color: pro
+                            ? c.gray
+                            : AppColors.brandInk.withOpacity(0.85)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right,
+                color: pro ? c.orange : AppColors.brandInk),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _untilText(DateTime? until) {
+    if (until == null) return 'Действует бессрочно.';
+    final d = until.toLocal();
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    return 'Действует до $dd.$mm.${d.year}. Нажмите, чтобы продлить.';
   }
 }
