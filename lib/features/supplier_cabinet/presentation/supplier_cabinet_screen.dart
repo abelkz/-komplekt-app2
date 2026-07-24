@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/settings_provider.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../auth/domain/app_user.dart';
@@ -289,18 +291,37 @@ class _CabinetBody extends ConsumerWidget {
                                     fontWeight: FontWeight.w700,
                                     color: c.green)),
                           ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 3),
-                          decoration: BoxDecoration(
-                              color: company.isPro ? c.orangeSoft : c.field,
-                              borderRadius: BorderRadius.circular(999)),
-                          child: Text(
-                              company.isPro ? '★ тариф Pro' : 'тариф Free',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: company.isPro ? c.orange : c.gray)),
+                        // Плашка тарифа открывает описание и оформление
+                        InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: () => context.push(Routes.plans(
+                              forSupplier: true, supplierId: company.id)),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 3),
+                            decoration: BoxDecoration(
+                                color: company.isPro ? c.orangeSoft : c.field,
+                                borderRadius: BorderRadius.circular(999)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                    company.isPro
+                                        ? '★ тариф Pro'
+                                        : 'тариф Free — подключить',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: company.isPro
+                                            ? c.orange
+                                            : c.gray)),
+                                const SizedBox(width: 2),
+                                Icon(Icons.chevron_right,
+                                    size: 14,
+                                    color: company.isPro ? c.orange : c.gray),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),

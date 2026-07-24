@@ -10,6 +10,7 @@ import '../../features/product/data/events_repository.dart';
 import '../../features/product/data/reviews_repository.dart';
 import '../../features/supplier_cabinet/data/storage_repository.dart';
 import '../../features/supplier_cabinet/data/supplier_cabinet_repository.dart';
+import '../../features/subscription/data/subscription_repository.dart';
 import '../../features/suppliers_map/data/supplier_repository.dart';
 import '../../features/visual_search/data/visual_search_repository.dart';
 
@@ -35,3 +36,5 @@ final notificationsRepositoryProvider =
     Provider((ref) => const NotificationsRepository());
 final visualSearchRepositoryProvider =
     Provider((ref) => const VisualSearchRepository());
+final subscriptionRepositoryProvider =
+    Provider((ref) => const SubscriptionRepository());

@@ -14,6 +14,8 @@ import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/product/presentation/product_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/subscription/data/subscription_repository.dart';
+import '../../features/subscription/presentation/plans_screen.dart';
 import '../../features/supplier_cabinet/presentation/supplier_cabinet_screen.dart';
 import '../../features/suppliers_map/presentation/supplier_screen.dart';
 import '../../features/suppliers_map/presentation/suppliers_map_screen.dart';
@@ -33,6 +35,12 @@ class Routes {
   static const supplierCabinet = '/supplier-cabinet';
   static const notifications = '/notifications';
   static const visualSearch = '/visual-search';
+
+  /// Платный тариф. `for=supplier` — предложение для компаний,
+  /// без параметра — для дизайнеров и прорабов.
+  static String plans({bool forSupplier = false, String? supplierId}) =>
+      '/pro?for=${forSupplier ? 'supplier' : 'client'}'
+      '${supplierId != null ? '&company=$supplierId' : ''}';
   static String product(String id) => '/product/$id';
   static String catalog(String slug) => '/catalog/$slug';
   static String supplier(String id) => '/supplier/$id';
@@ -151,6 +159,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.visualSearch,
         parentNavigatorKey: rootNavigatorKey,
         builder: (_, __) => const VisualSearchScreen(),
+      ),
+      GoRoute(
+        path: '/pro',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, state) => PlansScreen(
+          kind: state.uri.queryParameters['for'] == 'supplier'
+              ? PlanKind.supplier
+              : PlanKind.client,
+          supplierId: state.uri.queryParameters['company'],
+        ),
       ),
     ],
   );

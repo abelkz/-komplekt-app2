@@ -118,29 +118,41 @@ class ProfileScreen extends ConsumerWidget {
             ]),
             const SizedBox(height: 12),
 
-            // Pro-апселл
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: c.orangeSoft,
-                borderRadius: BorderRadius.circular(AppRadii.md),
-                border: Border.all(color: c.orange.withOpacity(0.4)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('★ КОМПЛЕКТ Pro',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: c.orange)),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Брендированные PDF-спецификации, история цен '
-                    'и безлимитные подборки — 4 900 ₸/мес.',
-                    style: TextStyle(fontSize: 12, color: c.orange, height: 1.4),
-                  ),
-                ],
+            // Pro-апселл — открывает описание тарифа и оформление
+            InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              onTap: () => context.push(Routes.plans()),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: c.orangeSoft,
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                  border: Border.all(color: c.orange.withOpacity(0.4)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('★ КОМПЛЕКТ Pro',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: c.orange)),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Брендированные PDF-спецификации, история цен '
+                            'и безлимитные подборки — 4 900 ₸/мес.',
+                            style: TextStyle(
+                                fontSize: 12, color: c.orange, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: c.orange),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 20),
