@@ -10,11 +10,12 @@ import '../supplier_cabinet_providers.dart';
 
 /// Новый товар.
 Future<void> showAddProductSheet(BuildContext context, String supplierId) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
+  // Полноэкранная страница — форма с фото и полями корректно работает
+  // с клавиатурой и медиатекой (нижний лист на iOS/вебе «улетал»).
+  return Navigator.of(context).push(MaterialPageRoute(
+    fullscreenDialog: true,
     builder: (_) => _AddProductSheet(supplierId: supplierId),
-  );
+  ));
 }
 
 /// Правка существующего товара: та же форма, заполненная его данными.
@@ -25,11 +26,10 @@ Future<void> showEditProductSheet(
   String supplierId,
   Product product,
 ) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
+  return Navigator.of(context).push(MaterialPageRoute(
+    fullscreenDialog: true,
     builder: (_) => _AddProductSheet(supplierId: supplierId, product: product),
-  );
+  ));
 }
 
 class _AddProductSheet extends ConsumerStatefulWidget {
@@ -188,21 +188,15 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
     final categories = catsAsync.valueOrNull ?? const [];
     final loading = ref.watch(cabinetControllerProvider).isLoading;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
+    return Scaffold(
+      appBar: AppBar(
+          title: Text(_editing ? 'Изменить товар' : 'Новый товар')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_editing ? 'Изменить товар' : 'Новый товар',
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 16),
             TextField(
               controller: _name,
               decoration: const InputDecoration(

@@ -18,11 +18,12 @@ import 'add_product_sheet.dart';
 /// сначала ищем существующую карточку и добавляем цену к ней — и только
 /// если товара действительно нет, заводим новую.
 Future<void> showCatalogPickSheet(BuildContext context, String supplierId) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
+  // Полноэкранная страница, а не нижний лист: с клавиатурой и фото-пикером
+  // на iOS/вебе лист «улетал». У страницы поле остаётся на месте.
+  return Navigator.of(context).push(MaterialPageRoute(
+    fullscreenDialog: true,
     builder: (_) => _CatalogPickSheet(supplierId: supplierId),
-  );
+  ));
 }
 
 class _CatalogPickSheet extends ConsumerStatefulWidget {
@@ -76,24 +77,13 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      // Компактный лист: viewInsets поднимает его над клавиатурой целиком,
-      // а список результатов прокручивается в своей ограниченной высоте.
-      // Без внешнего SingleChildScrollView — иначе автофокус уносил поле
-      // за верхнюю грань экрана.
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      appBar: AppBar(title: const Text('Добавить товар')),
+      // Тело — обычный прокручиваемый список на полной странице: клавиатура
+      // сдвигает содержимое штатно, ничего не «улетает».
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          const Text('Добавить товар',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
           Text(
             'Сначала поищите товар в каталоге — если его уже завёл другой '
             'поставщик, добавьте свою цену к той же карточке.',
@@ -124,18 +114,10 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
           const SizedBox(height: 12),
 
           if (_found.isNotEmpty)
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: _found.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _MatchRow(
-                  match: _found[i],
-                  onTap: () => _addPrice(_found[i]),
-                ),
-              ),
-            )
+            ..._found.expand((m) => [
+                  _MatchRow(match: m, onTap: () => _addPrice(m)),
+                  const SizedBox(height: 8),
+                ])
           else if (_searched && !_searching)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -172,12 +154,11 @@ class _CatalogPickSheetState extends ConsumerState<_CatalogPickSheet> {
       return;
     }
     final navigator = Navigator.of(context);
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
+    final result = await navigator.push<bool>(MaterialPageRoute(
+      fullscreenDialog: true,
       builder: (_) =>
           _PriceForMatchSheet(match: match, supplierId: widget.supplierId),
-    );
+    ));
     if (result == true) navigator.pop();
   }
 }
@@ -309,20 +290,11 @@ class _PriceForMatchSheetState extends ConsumerState<_PriceForMatchSheet> {
     final c = context.colors;
     final loading = ref.watch(cabinetControllerProvider).isLoading;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ваша цена')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          const Text('Ваша цена',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
           Text(widget.match.name,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
