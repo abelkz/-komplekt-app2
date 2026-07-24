@@ -14,6 +14,9 @@ class Supplier {
     this.lat,
     this.lng,
     this.distanceM,
+    this.verified = false,
+    this.plan = 'free',
+    this.planUntil,
   });
 
   final String id;
@@ -26,6 +29,21 @@ class Supplier {
   final String? description;
   final String? logoUrl;
   final double rating;
+
+  /// Проверенная компания — администратор посмотрел документы.
+  /// Значок не продаётся: он про проверку, а не про оплату.
+  final bool verified;
+
+  /// Тариф: free или pro
+  final String plan;
+
+  /// До какого момента оплачен тариф
+  final DateTime? planUntil;
+
+  /// Платный тариф действует прямо сейчас
+  bool get isPro =>
+      plan == 'pro' && (planUntil == null || planUntil!.isAfter(DateTime.now()));
+
   final double? lat;
   final double? lng;
 
@@ -53,6 +71,11 @@ class Supplier {
         description: m['description'] as String?,
         logoUrl: m['logo_url'] as String?,
         rating: (m['rating'] as num?)?.toDouble() ?? 0,
+        verified: m['verified'] as bool? ?? false,
+        plan: m['plan'] as String? ?? 'free',
+        planUntil: m['plan_until'] != null
+            ? DateTime.tryParse(m['plan_until'].toString())
+            : null,
         lat: (m['lat'] as num?)?.toDouble(),
         lng: (m['lng'] as num?)?.toDouble(),
         distanceM: (m['distance_m'] as num?)?.toDouble(),

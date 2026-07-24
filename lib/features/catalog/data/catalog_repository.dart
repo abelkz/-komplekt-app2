@@ -19,8 +19,8 @@ class CatalogRepository {
       'brand_id,'
       'brands(name),'
       'product_images(url,sort),'
-      'offers(id,price,prev_price,in_stock,price_updated_at,supplier_id,'
-      'suppliers(name,city,phone,whatsapp,website))';
+      'offers(id,price,prev_price,in_stock,price_updated_at,promoted_until,supplier_id,'
+      'suppliers(name,city,phone,whatsapp,website,verified,plan,plan_until))';
 
   /// Список категорий (по полю sort).
   /// Колонку с иконкой не перечисляем явно: в живой базе она называется
@@ -43,7 +43,7 @@ class CatalogRepository {
           .select(productSelect)
           .eq('category_slug', slug)
           .order('id');
-      return rows.map<Product>((m) => Product.fromMap(m)).toList();
+      return _promotedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить товары');
     }
@@ -68,7 +68,7 @@ class CatalogRepository {
           .select(productSelect)
           .or(filters.join(','))
           .limit(100);
-      return rows.map<Product>((m) => Product.fromMap(m)).toList();
+      return _promotedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
     } catch (e) {
       throw mapError(e, fallback: 'Поиск не удался');
     }
@@ -91,6 +91,20 @@ class CatalogRepository {
   String _sanitize(String query) =>
       query.trim().replaceAll(RegExp(r'[,()"\\]'), ' ').trim();
 
+  /// Оплаченные к показу товары — наверх списка.
+  ///
+  /// Только в списках и поиске, где нет обещания «здесь дешевле», и только
+  /// с пометкой в карточке. Внутри товара шкала цен остаётся строго
+  /// по цене — иначе сравнение цен перестаёт быть сравнением цен.
+  List<Product> _promotedFirst(List<Product> list) {
+    final promoted = <Product>[];
+    final rest = <Product>[];
+    for (final p in list) {
+      (p.isPromoted ? promoted : rest).add(p);
+    }
+    return [...promoted, ...rest];
+  }
+
   /// Лента «вдохновения» для главной с пагинацией (range).
   Future<List<Product>> feed({int limit = 20, int offset = 0}) async {
     try {
@@ -99,7 +113,7 @@ class CatalogRepository {
           .select(productSelect)
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
-      return rows.map<Product>((m) => Product.fromMap(m)).toList();
+      return _promotedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить ленту');
     }

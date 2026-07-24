@@ -123,6 +123,22 @@ class CabinetController extends AsyncNotifier<void> {
             inStock: inStock,
           ));
 
+  /// Поднять товар в топ списков. Возвращает дату окончания или null.
+  Future<DateTime?> promoteOffer(String offerId, {int days = 7}) async {
+    state = const AsyncLoading();
+    try {
+      final until = await ref
+          .read(supplierCabinetRepositoryProvider)
+          .promoteOffer(offerId, days: days);
+      ref.invalidate(myProductsProvider);
+      state = const AsyncData(null);
+      return until;
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      return null;
+    }
+  }
+
   Future<bool> deleteProduct(String productId) => _run(
       () => ref.read(supplierCabinetRepositoryProvider).deleteProduct(productId));
 

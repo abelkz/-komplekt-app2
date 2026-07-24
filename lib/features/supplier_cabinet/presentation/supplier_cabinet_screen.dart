@@ -259,17 +259,50 @@ class _CabinetBody extends ConsumerWidget {
                         style: const TextStyle(
                             fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 3),
-                      decoration: BoxDecoration(
-                          color: c.greenSoft,
-                          borderRadius: BorderRadius.circular(999)),
-                      child: Text('✓ поставщик одобрен',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: c.green)),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 3),
+                          decoration: BoxDecoration(
+                              color: c.greenSoft,
+                              borderRadius: BorderRadius.circular(999)),
+                          child: Text('✓ поставщик одобрен',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.green)),
+                        ),
+                        // Проверку документов ставит администратор
+                        if (company.verified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 3),
+                            decoration: BoxDecoration(
+                                color: c.greenSoft,
+                                borderRadius: BorderRadius.circular(999)),
+                            child: Text('✓ проверенная компания',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: c.green)),
+                          ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 3),
+                          decoration: BoxDecoration(
+                              color: company.isPro ? c.orangeSoft : c.field,
+                              borderRadius: BorderRadius.circular(999)),
+                          child: Text(
+                              company.isPro ? '★ тариф Pro' : 'тариф Free',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: company.isPro ? c.orange : c.gray)),
+                        ),
+                      ],
                     ),
                   ],
                 ),

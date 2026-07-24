@@ -378,6 +378,13 @@ class _OfferCard extends ConsumerWidget {
                               style: const TextStyle(
                                   fontSize: 14, fontWeight: FontWeight.w700)),
                         ),
+                        // Проверенная компания. Значок про документы,
+                        // а не про оплату — и на порядок в шкале цен
+                        // он не влияет: выше стоит тот, у кого дешевле.
+                        if (offer.supplierVerified) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.verified, size: 15, color: c.green),
+                        ],
                         if (best) ...[
                           const SizedBox(width: 7),
                           Container(

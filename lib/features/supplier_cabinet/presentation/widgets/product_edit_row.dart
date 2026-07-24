@@ -81,6 +81,34 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
     _snack(t.startsWith('Failure: ') ? t.substring(9) : 'Не удалось сохранить');
   }
 
+  bool get _promoted =>
+      widget.product.offers.isNotEmpty && widget.product.offers.first.isPromoted;
+
+  String _promotedUntilText() {
+    final until = widget.product.offers.first.promotedUntil;
+    if (until == null) return '';
+    return '${until.day.toString().padLeft(2, '0')}.'
+        '${until.month.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _promote() async {
+    final id = _offerId;
+    if (id == null) {
+      _snack('Сначала сохраните цену');
+      return;
+    }
+    final until =
+        await ref.read(cabinetControllerProvider.notifier).promoteOffer(id);
+    if (!mounted) return;
+    if (until != null) {
+      _snack('Товар поднят в топ до ${until.day}.${until.month}');
+      return;
+    }
+    final e = ref.read(cabinetControllerProvider).error;
+    final t = e?.toString() ?? '';
+    _snack(t.startsWith('Failure: ') ? t.substring(9) : 'Не удалось продвинуть');
+  }
+
   Future<void> _delete() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -225,6 +253,40 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
               label: Text(_dirty ? 'Обновить цену' : 'Цена сохранена'),
               onPressed: _dirty ? _save : null,
             ),
+          ),
+          // Продвижение: поднимает товар в топ списков и поиска.
+          // На шкалу цен внутри карточки не влияет — там только цена.
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: _promoted
+                ? Row(
+                    children: [
+                      Icon(Icons.trending_up, size: 14, color: c.accent),
+                      const SizedBox(width: 5),
+                      Text(
+                        'В топе до ${_promotedUntilText()}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: c.accent),
+                      ),
+                    ],
+                  )
+                : InkWell(
+                    onTap: _promote,
+                    child: Row(
+                      children: [
+                        Icon(Icons.trending_up, size: 14, color: c.gray),
+                        const SizedBox(width: 5),
+                        Text('Поднять в топ на неделю',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: c.gray,
+                                decoration: TextDecoration.underline,
+                                decorationStyle: TextDecorationStyle.dotted)),
+                      ],
+                    ),
+                  ),
           ),
           if (widget.stat != null)
             Padding(

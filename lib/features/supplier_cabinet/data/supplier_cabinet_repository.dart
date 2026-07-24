@@ -169,7 +169,7 @@ class SupplierCabinetRepository {
     try {
       final rows = await supabase
           .from('offers')
-          .select('id,price,prev_price,in_stock,price_updated_at,supplier_id,'
+          .select('id,price,prev_price,in_stock,price_updated_at,promoted_until,supplier_id,'
               'supplier_sku,'
               'products(id,name,sku,unit,color,image_url,category_slug,owner_id,'
               'brands(name),product_images(url,sort))')
@@ -192,6 +192,7 @@ class SupplierCabinetRepository {
             'price_updated_at': row['price_updated_at'],
             'supplier_id': row['supplier_id'],
             'supplier_sku': row['supplier_sku'],
+            'promoted_until': row['promoted_until'],
           }
         ];
         result.add(Product.fromMap(map));
@@ -312,6 +313,27 @@ class SupplierCabinetRepository {
       });
     } catch (e) {
       throw _dbFail(e, 'Не удалось сохранить товар');
+    }
+  }
+
+  /// Поднять своё предложение в топ списков на [days] дней.
+  ///
+  /// Доступно только на тарифе Pro — проверку делает база. На порядок
+  /// в шкале цен внутри карточки товара это не влияет: там всегда
+  /// первым идёт тот, у кого дешевле.
+  Future<DateTime?> promoteOffer(String offerId, {int days = 7}) async {
+    await _requireSession();
+    try {
+      final res = await supabase.rpc('promote_offer', params: {
+        'p_offer': int.tryParse(offerId) ?? offerId,
+        'p_days': days,
+      });
+      return res == null ? null : DateTime.tryParse(res.toString());
+    } catch (e) {
+      if (e.toString().contains('promote_offer')) {
+        throw const Failure('Продвижение ещё не настроено на сервере');
+      }
+      throw _dbFail(e, 'Не удалось продвинуть товар');
     }
   }
 

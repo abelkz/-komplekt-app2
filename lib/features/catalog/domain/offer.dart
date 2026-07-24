@@ -13,6 +13,9 @@ class Offer {
     this.website,
     this.priceUpdatedAt,
     this.prevPrice,
+    this.supplierVerified = false,
+    this.supplierPro = false,
+    this.promotedUntil,
   });
 
   final String? id;
@@ -29,6 +32,20 @@ class Offer {
   /// Цена до последнего изменения — по ней показываем ▼/▲ на карточке.
   /// Заполняется триггером в базе (миграция 0012).
   final double? prevPrice;
+
+  /// Поставщик проверен администратором (документы компании).
+  /// Значок не продаётся: он утверждает факт проверки, а не факт оплаты.
+  final bool supplierVerified;
+
+  /// Компания на платном тарифе
+  final bool supplierPro;
+
+  /// До какого момента товар продвигается в списках.
+  /// На порядок в шкале цен внутри карточки НЕ влияет — там только цена.
+  final DateTime? promotedUntil;
+
+  bool get isPromoted =>
+      promotedUntil != null && promotedUntil!.isAfter(DateTime.now());
 
   /// Насколько изменилась цена, в процентах. Отрицательное — подешевело.
   /// null, если прежней цены нет или она не изменилась.
@@ -56,6 +73,16 @@ class Offer {
           ? DateTime.tryParse(m['price_updated_at'].toString())
           : null,
       prevPrice: (m['prev_price'] as num?)?.toDouble(),
+      supplierVerified: sup['verified'] as bool? ?? false,
+      // тариф считается действующим, только пока оплачен срок
+      supplierPro: (sup['plan'] == 'pro') &&
+          (sup['plan_until'] == null ||
+              (DateTime.tryParse(sup['plan_until'].toString())
+                      ?.isAfter(DateTime.now()) ??
+                  false)),
+      promotedUntil: m['promoted_until'] != null
+          ? DateTime.tryParse(m['promoted_until'].toString())
+          : null,
     );
   }
 }

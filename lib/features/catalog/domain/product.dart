@@ -63,7 +63,17 @@ class Product {
   }
 
   /// Лучшее (самое дешёвое) предложение.
+  ///
+  /// Именно цена, а не продвижение: обещание «покажем, где дешевле» —
+  /// то единственное, ради чего приложением пользуются.
   Offer? get bestOffer => offers.isEmpty ? null : sortedOffers.first;
+
+  /// Товар оплачен к показу в топе списков. В шкале цен внутри карточки
+  /// это ничего не меняет — там порядок всегда по цене.
+  bool get isPromoted => offers.any((o) => o.isPromoted);
+
+  /// Есть ли среди продавцов проверенный администратором
+  bool get hasVerifiedSupplier => offers.any((o) => o.supplierVerified);
 
   /// Первое фото из галереи (или null — тогда показываем заглушку).
   String? get primaryImageUrl {
