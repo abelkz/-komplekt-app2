@@ -293,10 +293,32 @@ class _CollectionBlock extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          // Заявка поставщикам: открывает чат с готовым текстом запроса
+          _SendToSuppliersButton(
+            onTap: () => _sendToSuppliers(context, collection),
+          ),
           const SizedBox(height: 24),
         ],
       ],
     );
+  }
+
+  Future<void> _sendToSuppliers(BuildContext context, Collection col) async {
+    if (col.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('В комплекте нет позиций')));
+      return;
+    }
+    final origin = _shareOrigin(context);
+    try {
+      await SpecExport.shareForSuppliers(col, shareOrigin: origin);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_err(e, 'Не удалось открыть отправку'))));
+      }
+    }
   }
 
   /// Реквизиты для подписи PDF — только у активного тарифа Про.
@@ -700,6 +722,58 @@ class _ExportButton extends StatelessWidget {
             Text(label,
                 style:
                     const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Крупная тёмная кнопка «Отправить заявку поставщикам».
+class _SendToSuppliersButton extends StatelessWidget {
+  const _SendToSuppliersButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: c.ink,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Отправить заявку поставщикам',
+                      style: TextStyle(
+                          color: c.paper,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text('ответ с предложением — в чат',
+                      style: TextStyle(
+                          color: c.paper.withOpacity(0.6), fontSize: 12)),
+                ],
+              ),
+            ),
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: c.orange,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.arrow_forward, color: c.ink, size: 18),
+            ),
           ],
         ),
       ),

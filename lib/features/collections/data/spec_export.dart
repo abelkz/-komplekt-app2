@@ -19,6 +19,24 @@ import '../domain/collection.dart';
 class SpecExport {
   SpecExport._();
 
+  /// Заявка поставщикам: список позиций с просьбой прислать предложение.
+  /// Открывает системный лист «Поделиться» — человек выбирает чат
+  /// (Telegram, WhatsApp, почта), куда отправить.
+  static Future<void> shareForSuppliers(Collection c, {Rect? shareOrigin}) async {
+    final lines = c.items.where((i) => i.product != null).map((i) {
+      final p = i.product!;
+      final qty = '${Formatters.number(i.qty)} ${p.unit}'.trim();
+      final sku = p.sku.isNotEmpty ? ' (арт. ${p.sku})' : '';
+      return '· ${p.name}$sku — $qty';
+    }).join('\n');
+
+    final text = 'Здравствуйте! Прошу дать предложение по позициям:\n\n'
+        '$lines\n\nКомплект «${c.name}». Жду цену и сроки.';
+
+    await Share.share(text,
+        subject: 'Заявка на предложение', sharePositionOrigin: shareOrigin);
+  }
+
   /// Строки спецификации: №, наименование, артикул, поставщик, цена, кол-во, ед., сумма.
   static List<_Row> _rows(Collection c) {
     final items = c.items.where((i) => i.product != null).toList();
@@ -180,7 +198,9 @@ class SpecExport {
               7: const pw.FixedColumnWidth(54),
             },
             data: [
-              ['№', 'Наименование', 'Артикул', 'Поставщик', 'Цена, ₸', 'Кол-во', 'Ед.', 'Сумма, ₸'],
+              // «тг», а не символ ₸: в шрифте Open Sans знака тенге нет,
+              // и он печатается пустым квадратом
+              ['№', 'Наименование', 'Артикул', 'Поставщик', 'Цена, тг', 'Кол-во', 'Ед.', 'Сумма, тг'],
               for (final r in rows)
                 [
                   '${r.n}',
@@ -198,7 +218,7 @@ class SpecExport {
           pw.SizedBox(height: 12),
           pw.Align(
             alignment: pw.Alignment.centerRight,
-            child: pw.Text('Итого: ${Formatters.price(c.total)}',
+            child: pw.Text('Итого: ${Formatters.price(c.total, currency: 'тг')}',
                 style:
                     pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           ),

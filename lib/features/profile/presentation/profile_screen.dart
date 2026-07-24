@@ -119,7 +119,11 @@ class ProfileScreen extends ConsumerWidget {
                     : 'выкл',
                 onTap: () => _notifyDialog(context, ref),
               ),
-              _MenuItemData('История поиска', '$recentCount запросов'),
+              _MenuItemData(
+                'История поиска',
+                '$recentCount запросов',
+                onTap: () => _recentSearchesSheet(context, ref),
+              ),
               _MenuItemData(
                 profile.valueOrNull?.isSupplier == true
                     ? 'Кабинет поставщика'
@@ -231,6 +235,65 @@ class ProfileScreen extends ConsumerWidget {
           ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// История поиска: список недавних запросов, тап — повторить поиск,
+  /// плюс кнопка очистить. Раньше пункт был некликабельным.
+  void _recentSearchesSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetCtx) => Consumer(
+        builder: (ctx, r, __) {
+          final c = ctx.colors;
+          final recent = r.watch(recentSearchesProvider);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('История поиска',
+                            style: TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.w700)),
+                      ),
+                      if (recent.isNotEmpty)
+                        TextButton(
+                          onPressed: () =>
+                              r.read(recentSearchesProvider.notifier).clear(),
+                          child: const Text('Очистить'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (recent.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text('Вы ещё ничего не искали.',
+                          style: TextStyle(color: c.gray)),
+                    )
+                  else
+                    for (final q in recent)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.history, color: c.gray),
+                        title: Text(q),
+                        trailing: Icon(Icons.north_west, size: 16, color: c.gray),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          context.push('${Routes.search}?q=${Uri.encodeComponent(q)}');
+                        },
+                      ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
