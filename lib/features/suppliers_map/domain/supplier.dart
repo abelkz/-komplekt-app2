@@ -52,6 +52,26 @@ class Supplier {
 
   bool get hasLocation => lat != null && lng != null;
 
+  Supplier copyWith({double? distanceM, String? address, double? lat, double? lng}) =>
+      Supplier(
+        id: id,
+        name: name,
+        city: city,
+        address: address ?? this.address,
+        phone: phone,
+        whatsapp: whatsapp,
+        website: website,
+        description: description,
+        logoUrl: logoUrl,
+        rating: rating,
+        lat: lat ?? this.lat,
+        lng: lng ?? this.lng,
+        distanceM: distanceM ?? this.distanceM,
+        verified: verified,
+        plan: plan,
+        planUntil: planUntil,
+      );
+
   /// "1,2 км" / "350 м"
   String? get distanceLabel {
     final d = distanceM;

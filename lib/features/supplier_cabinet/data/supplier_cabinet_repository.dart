@@ -158,6 +158,28 @@ class SupplierCabinetRepository {
     }
   }
 
+  /// Сохранить адрес и точку на карте своей компании.
+  /// Пишем прямо в свою строку suppliers (owner_id = я).
+  Future<void> saveLocation({
+    required String address,
+    required double lat,
+    required double lng,
+  }) async {
+    final uid = await _requireSession();
+    try {
+      await supabase
+          .from('suppliers')
+          .update({
+            'address': address.trim(),
+            'lat': lat,
+            'lng': lng,
+          })
+          .eq('owner_id', uid);
+    } catch (e) {
+      throw _dbFail(e, 'Не удалось сохранить адрес');
+    }
+  }
+
   /// Мой ассортимент — товары, на которые у меня есть предложение.
   ///
   /// Идём от предложений, а не от карточек: в общем каталоге поставщик

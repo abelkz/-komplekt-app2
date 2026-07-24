@@ -354,6 +354,27 @@ class _CabinetBody extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          // Место на карте: без координат компанию не видно на карте
+          // «поставщики рядом»
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.ink,
+              side: BorderSide(color: company.hasLocation ? c.line : c.orange),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              minimumSize: const Size.fromHeight(0),
+            ),
+            icon: Icon(
+                company.hasLocation
+                    ? Icons.place
+                    : Icons.add_location_alt_outlined,
+                size: 18,
+                color: company.hasLocation ? c.orange : c.orange),
+            label: Text(company.hasLocation
+                ? 'Место на карте — изменить'
+                : 'Указать место на карте'),
+            onPressed: () => context.push(Routes.supplierLocation),
+          ),
           const SizedBox(height: 18),
 
           products.when(

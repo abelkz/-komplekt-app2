@@ -18,6 +18,7 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/subscription/data/subscription_repository.dart';
 import '../../features/subscription/presentation/plans_screen.dart';
 import '../../features/supplier_cabinet/presentation/supplier_cabinet_screen.dart';
+import '../../features/supplier_cabinet/presentation/supplier_location_screen.dart';
 import '../../features/suppliers_map/presentation/supplier_screen.dart';
 import '../../features/suppliers_map/presentation/suppliers_map_screen.dart';
 import '../../features/visual_search/presentation/visual_search_screen.dart';
@@ -34,6 +35,7 @@ class Routes {
   static const profile = '/profile';
   static const map = '/map';
   static const supplierCabinet = '/supplier-cabinet';
+  static const supplierLocation = '/supplier-cabinet/location';
   static const notifications = '/notifications';
   static const visualSearch = '/visual-search';
   static const admin = '/admin';
@@ -145,6 +147,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.supplierCabinet,
         parentNavigatorKey: rootNavigatorKey,
         builder: (_, __) => const SupplierCabinetScreen(),
+      ),
+      GoRoute(
+        path: Routes.supplierLocation,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const SupplierLocationScreen(),
       ),
       GoRoute(
         path: Routes.notifications,
