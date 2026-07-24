@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/onboarding/feature_tour.dart';
+import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -25,6 +27,48 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _search = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Знакомство с приложением при первом входе — после отрисовки экрана
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTour());
+  }
+
+  Future<void> _maybeShowTour() async {
+    // небольшая пауза, чтобы экран успел встать на место
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    FeatureTour.maybeShow(
+      context,
+      store: ref.read(localStoreProvider),
+      id: 'home',
+      steps: [
+        TourStep(
+          key: TourKeys.search,
+          title: 'Поиск материалов',
+          text: 'Введите название, артикул или марку — покажем все '
+              'предложения поставщиков с ценами. Значок камеры — поиск по фото.',
+        ),
+        TourStep(
+          key: TourKeys.map,
+          title: 'Поставщики на карте',
+          text: 'Кто торгует рядом с вами: адреса, расстояние и контакты.',
+        ),
+        TourStep(
+          key: TourKeys.bell,
+          title: 'Уведомления о ценах',
+          text: 'Добавьте товар в избранное — сообщим, когда цена снизится.',
+        ),
+        TourStep(
+          key: TourKeys.navBar,
+          title: 'Разделы приложения',
+          text: 'Поиск, Избранное и Комплекты объектов. В Профиле можно '
+              'стать поставщиком и разместить свои товары.',
+        ),
+      ],
+    );
+  }
 
   @override
   void dispose() {
@@ -77,19 +121,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     style: AppTypography.mono(color: c.gray),
                                   ),
                                 ),
-                                Badge.count(
-                                  count:
-                                      ref.watch(unreadCountProvider).valueOrNull ??
-                                          0,
-                                  isLabelVisible: (ref
-                                              .watch(unreadCountProvider)
-                                              .valueOrNull ??
-                                          0) >
-                                      0,
-                                  child: _IconButton(
-                                    icon: Icons.notifications_none_rounded,
-                                    onTap: () =>
-                                        context.push(Routes.notifications),
+                                KeyedSubtree(
+                                  key: TourKeys.bell,
+                                  child: Badge.count(
+                                    count: ref
+                                            .watch(unreadCountProvider)
+                                            .valueOrNull ??
+                                        0,
+                                    isLabelVisible: (ref
+                                                .watch(unreadCountProvider)
+                                                .valueOrNull ??
+                                            0) >
+                                        0,
+                                    child: _IconButton(
+                                      icon: Icons.notifications_none_rounded,
+                                      onTap: () =>
+                                          context.push(Routes.notifications),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -124,15 +172,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   AppTypography.unbounded(size: 30, color: c.ink),
                             ),
                             const SizedBox(height: 18),
-                            _SearchBar(
-                              controller: _search,
-                              onSubmit: _doSearch,
-                              onVisualSearch: () =>
-                                  context.push(Routes.visualSearch),
+                            KeyedSubtree(
+                              key: TourKeys.search,
+                              child: _SearchBar(
+                                controller: _search,
+                                onSubmit: _doSearch,
+                                onVisualSearch: () =>
+                                    context.push(Routes.visualSearch),
+                              ),
                             ),
                             const SizedBox(height: 12),
                             // Кнопка карты поставщиков
-                            _MapButton(onTap: () => context.push(Routes.map)),
+                            KeyedSubtree(
+                              key: TourKeys.map,
+                              child: _MapButton(
+                                  onTap: () => context.push(Routes.map)),
+                            ),
                             const SizedBox(height: 6),
                             _SectionLabel('Категории'),
                           ],

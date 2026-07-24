@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/onboarding/feature_tour.dart';
+import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -234,12 +236,68 @@ class _Cabinet extends ConsumerWidget {
   }
 }
 
-class _CabinetBody extends ConsumerWidget {
+class _CabinetBody extends ConsumerStatefulWidget {
   const _CabinetBody({required this.company});
   final Supplier company;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CabinetBody> createState() => _CabinetBodyState();
+}
+
+class _CabinetBodyState extends ConsumerState<_CabinetBody> {
+  Supplier get company => widget.company;
+
+  @override
+  void initState() {
+    super.initState();
+    // Знакомство с кабинетом при первом заходе
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTour());
+  }
+
+  Future<void> _maybeShowTour() async {
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    FeatureTour.maybeShow(
+      context,
+      store: ref.read(localStoreProvider),
+      id: 'supplier',
+      steps: [
+        TourStep(
+          key: TourKeys.cabImport,
+          title: 'Загрузите прайс',
+          text: 'Excel-файл с наименованиями и ценами — весь ассортимент '
+              'появится в каталоге за минуту.',
+        ),
+        TourStep(
+          key: TourKeys.cabAdd,
+          title: 'Добавьте товар вручную',
+          text: 'Найдите товар в общем каталоге и поставьте свою цену — '
+              'или создайте новую карточку с фото.',
+        ),
+        TourStep(
+          key: TourKeys.cabLocation,
+          title: 'Отметьте себя на карте',
+          text: 'Укажите адрес и точку — покупатели рядом увидят вас '
+              'на карте «Поставщики рядом».',
+        ),
+        TourStep(
+          key: TourKeys.cabProfile,
+          title: 'Заполните профиль компании',
+          text: 'WhatsApp, сайт, год работы и описание — это видит '
+              'покупатель на вашей витрине.',
+        ),
+        TourStep(
+          key: TourKeys.cabPro,
+          title: 'Тариф Pro',
+          text: 'Продвижение товаров в топ, значок «проверенная компания» '
+              'и статистика спроса.',
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final c = context.colors;
     final products = ref.watch(myProductsProvider);
     final stats = ref.watch(myStatsProvider).valueOrNull ?? const {};
@@ -301,27 +359,36 @@ class _CabinetBody extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           // Заметный баннер тарифа Pro — раньше был крохотной плашкой
-          _SupplierProBanner(company: company),
+          KeyedSubtree(
+            key: TourKeys.cabPro,
+            child: _SupplierProBanner(company: company),
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: c.line),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
+                child: KeyedSubtree(
+                  key: TourKeys.cabImport,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: c.line),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                    icon: const Icon(Icons.upload_file_outlined, size: 18),
+                    label: const Text('Загрузить прайс'),
+                    onPressed: () => showImportPriceSheet(context, company.id),
                   ),
-                  icon: const Icon(Icons.upload_file_outlined, size: 18),
-                  label: const Text('Загрузить прайс'),
-                  onPressed: () => showImportPriceSheet(context, company.id),
                 ),
               ),
               const SizedBox(width: 9),
               Expanded(
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Добавить товар'),
-                  onPressed: () => showCatalogPickSheet(context, company.id),
+                child: KeyedSubtree(
+                  key: TourKeys.cabAdd,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Добавить товар'),
+                    onPressed: () => showCatalogPickSheet(context, company.id),
+                  ),
                 ),
               ),
             ],
@@ -329,35 +396,41 @@ class _CabinetBody extends ConsumerWidget {
           const SizedBox(height: 10),
           // Место на карте: без координат компанию не видно на карте
           // «поставщики рядом»
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: c.ink,
-              side: BorderSide(color: company.hasLocation ? c.line : c.orange),
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              minimumSize: const Size.fromHeight(0),
+          KeyedSubtree(
+            key: TourKeys.cabLocation,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.ink,
+                side: BorderSide(color: company.hasLocation ? c.line : c.orange),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                minimumSize: const Size.fromHeight(0),
+              ),
+              icon: Icon(
+                  company.hasLocation
+                      ? Icons.place
+                      : Icons.add_location_alt_outlined,
+                  size: 18,
+                  color: company.hasLocation ? c.orange : c.orange),
+              label: Text(company.hasLocation
+                  ? 'Место на карте — изменить'
+                  : 'Указать место на карте'),
+              onPressed: () => context.push(Routes.supplierLocation),
             ),
-            icon: Icon(
-                company.hasLocation
-                    ? Icons.place
-                    : Icons.add_location_alt_outlined,
-                size: 18,
-                color: company.hasLocation ? c.orange : c.orange),
-            label: Text(company.hasLocation
-                ? 'Место на карте — изменить'
-                : 'Указать место на карте'),
-            onPressed: () => context.push(Routes.supplierLocation),
           ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: c.ink,
-              side: BorderSide(color: c.line),
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              minimumSize: const Size.fromHeight(0),
+          KeyedSubtree(
+            key: TourKeys.cabProfile,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.ink,
+                side: BorderSide(color: c.line),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                minimumSize: const Size.fromHeight(0),
+              ),
+              icon: Icon(Icons.storefront_outlined, size: 18, color: c.orange),
+              label: const Text('Профиль компании — WhatsApp, год, описание'),
+              onPressed: () => showCompanyProfileSheet(context, company),
             ),
-            icon: Icon(Icons.storefront_outlined, size: 18, color: c.orange),
-            label: const Text('Профиль компании — WhatsApp, год, описание'),
-            onPressed: () => showCompanyProfileSheet(context, company),
           ),
           const SizedBox(height: 18),
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/onboarding/feature_tour.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/tape_stripe.dart';
@@ -35,6 +36,7 @@ class HomeShell extends ConsumerWidget {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: Container(
+        key: TourKeys.navBar,
         // «рулетка» всегда тёмная — в обеих темах, это часть бренда
         color: AppColors.brandInk,
         padding: const EdgeInsets.only(top: 14),

@@ -30,6 +30,11 @@ class LocalStore {
   int get notifyThreshold => _prefs.getInt('notify_threshold') ?? 10;
   Future<void> setNotifyThreshold(int v) => _prefs.setInt('notify_threshold', v);
 
+  // Туры-знакомства (подсказки по кнопкам): показаны один раз.
+  // id — 'home' (первый вход) или 'supplier' (первый заход в кабинет).
+  bool tourSeen(String id) => _prefs.getBool('tour_$id') ?? false;
+  Future<void> setTourSeen(String id) => _prefs.setBool('tour_$id', true);
+
   // Недавние поиски (до 5)
   List<String> get recentSearches =>
       _prefs.getStringList('recent_searches') ?? const [];
