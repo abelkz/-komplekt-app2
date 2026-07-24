@@ -98,6 +98,7 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final profile = ref.read(myProfileProvider).valueOrNull;
 
+    var saved = true;
     try {
       await ref.read(subscriptionRepositoryProvider).request(
             kind: widget.kind,
@@ -105,13 +106,14 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
             contact: profile?.phone,
           );
     } catch (e) {
+      // Заявку не записали — но переписку всё равно открываем,
+      // иначе человек останется вообще без способа с нами связаться.
+      saved = false;
       final t = e.toString();
       messenger.showSnackBar(SnackBar(
           content: Text(t.startsWith('Failure: ')
               ? t.substring(9)
-              : 'Не удалось отправить заявку')));
-      if (mounted) setState(() => _sending = false);
-      return;
+              : 'Не удалось сохранить заявку — напишите нам в WhatsApp')));
     }
 
     // Оплата пока вне приложения — открываем переписку с готовым текстом
@@ -129,8 +131,10 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
 
     if (!mounted) return;
     setState(() => _sending = false);
-    messenger.showSnackBar(const SnackBar(
-        content: Text('Заявка отправлена — свяжемся и подключим тариф')));
+    if (saved) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Заявка отправлена — свяжемся и подключим тариф')));
+    }
   }
 
   @override

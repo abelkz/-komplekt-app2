@@ -27,8 +27,8 @@ class SubscriptionRepository {
         if (contact != null && contact.isNotEmpty) 'contact': contact,
       });
     } catch (e) {
-      // Таблицы ещё нет (миграция 0015) — не мешаем человеку написать нам
-      if (e.toString().contains('subscription_requests')) return;
+      // Раньше ошибку записи глушили молча — заявка терялась, и человек
+      // видел «отправлено». Теперь любая ошибка доходит до экрана.
       throw mapError(e, fallback: 'Не удалось отправить заявку');
     }
   }
