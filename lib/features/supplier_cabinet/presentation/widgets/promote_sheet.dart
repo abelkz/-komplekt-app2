@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../subscription/data/payment_service.dart';
 import '../../data/supplier_cabinet_repository.dart';
 import '../supplier_cabinet_providers.dart';
 
@@ -233,6 +234,32 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
   Future<void> _order() async {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+
+    // Сначала онлайн-оплата картой/Apple Pay/Google Pay
+    try {
+      await ref.read(paymentServiceProvider).pay(
+            kind: 'boost',
+            boostDays: _days,
+            boostQty: _qty,
+          );
+      if (!mounted) return;
+      setState(() => _busy = false);
+      Navigator.pop(context);
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Открыли оплату — бусты начислятся сразу после оплаты')));
+      return;
+    } catch (e) {
+      final t = e.toString();
+      if (!t.contains('не подключена')) {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        messenger.showSnackBar(SnackBar(
+            content: Text(t.startsWith('Failure: ') ? t.substring(9) : 'Ошибка оплаты')));
+        return;
+      }
+      // онлайн-оплата не развёрнута — откат на заявку
+    }
+
     final ok = await ref
         .read(cabinetControllerProvider.notifier)
         .orderBoost(days: _days, qty: _qty);

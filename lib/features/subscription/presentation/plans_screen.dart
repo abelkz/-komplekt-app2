@@ -8,6 +8,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../data/payment_service.dart';
 import '../data/subscription_repository.dart';
 
 /// Экран 13 — платный тариф.
@@ -96,8 +97,38 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
   Future<void> _order() async {
     setState(() => _sending = true);
     final messenger = ScaffoldMessenger.of(context);
-    final profile = ref.read(myProfileProvider).valueOrNull;
 
+    // Сначала пробуем онлайн-оплату картой/Apple Pay/Google Pay
+    try {
+      await ref.read(paymentServiceProvider).pay(
+            kind: _forSupplier ? 'pro_supplier' : 'pro_client',
+            months: 1,
+            supplierId: widget.supplierId,
+          );
+      if (!mounted) return;
+      setState(() => _sending = false);
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Открыли оплату — тариф включится сразу после оплаты')));
+      return;
+    } catch (e) {
+      final t = e.toString();
+      final notReady = t.contains('не подключена');
+      if (!notReady) {
+        if (!mounted) return;
+        setState(() => _sending = false);
+        messenger.showSnackBar(SnackBar(
+            content: Text(t.startsWith('Failure: ') ? t.substring(9) : 'Ошибка оплаты')));
+        return;
+      }
+      // Онлайн-оплата ещё не развёрнута — откатываемся на заявку + WhatsApp
+    }
+
+    await _orderViaManager(messenger);
+  }
+
+  /// Запасной путь, пока онлайн-оплата не подключена: заявка + WhatsApp.
+  Future<void> _orderViaManager(ScaffoldMessengerState messenger) async {
+    final profile = ref.read(myProfileProvider).valueOrNull;
     var saved = true;
     try {
       await ref.read(subscriptionRepositoryProvider).request(
@@ -105,21 +136,11 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
             supplierId: widget.supplierId,
             contact: profile?.phone,
           );
-    } catch (e) {
-      // Заявку не записали — но переписку всё равно открываем,
-      // иначе человек останется вообще без способа с нами связаться.
+    } catch (_) {
       saved = false;
-      final t = e.toString();
-      messenger.showSnackBar(SnackBar(
-          content: Text(t.startsWith('Failure: ')
-              ? t.substring(9)
-              : 'Не удалось сохранить заявку — напишите нам в WhatsApp')));
     }
-
-    // Оплата пока вне приложения — открываем переписку с готовым текстом
-    final what = _forSupplier
-        ? 'тариф Pro для поставщика'
-        : 'подписку КОМПЛЕКТ Pro';
+    final what =
+        _forSupplier ? 'тариф Pro для поставщика' : 'подписку КОМПЛЕКТ Pro';
     final who = profile?.company.isNotEmpty == true
         ? profile!.company
         : (profile?.fullName ?? '');
@@ -128,7 +149,6 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
       text: 'Здравствуйте! Хочу оформить $what.'
           '${who.isEmpty ? '' : ' Компания: $who.'}',
     );
-
     if (!mounted) return;
     setState(() => _sending = false);
     if (saved) {
@@ -246,9 +266,8 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            'Оплата пока оформляется через менеджера: мы свяжемся с вами '
-            'в WhatsApp, выставим счёт и подключим тариф. Автоматическая '
-            'оплата картой появится позже.',
+            'Оплата картой, Apple Pay или Google Pay через CloudPayments. '
+            'Тариф включается сразу после оплаты.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: c.faint, height: 1.4),
           ),
