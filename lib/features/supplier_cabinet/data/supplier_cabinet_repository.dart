@@ -39,6 +39,41 @@ class PriceRow {
   final String? imageUrl;
 }
 
+/// Что доступно поставщику для подъёма в топ прямо сейчас.
+class BoostStatus {
+  const BoostStatus({
+    required this.isPro,
+    required this.freeLeft,
+    required this.credits,
+  });
+
+  /// Действует ли тариф Pro (даёт бесплатные подъёмы)
+  final bool isPro;
+
+  /// Сколько бесплатных подъёмов Pro осталось в этом месяце
+  final int freeLeft;
+
+  /// Купленные кредиты Буста: срок (дней) -> сколько штук
+  final Map<int, int> credits;
+
+  bool get hasCredits => credits.values.any((c) => c > 0);
+  int creditsFor(int days) => credits[days] ?? 0;
+
+  factory BoostStatus.fromJson(Map<String, dynamic> m) {
+    final list = (m['credits'] as List?) ?? const [];
+    final credits = <int, int>{};
+    for (final e in list) {
+      final map = e as Map<String, dynamic>;
+      credits[(map['days'] as num).toInt()] = (map['count'] as num).toInt();
+    }
+    return BoostStatus(
+      isPro: m['is_pro'] as bool? ?? false,
+      freeLeft: (m['free_left'] as num?)?.toInt() ?? 0,
+      credits: credits,
+    );
+  }
+}
+
 /// Найденная в общем каталоге карточка — к ней поставщик добавляет свою цену.
 class CatalogMatch {
   const CatalogMatch({
@@ -343,7 +378,7 @@ class SupplierCabinetRepository {
   /// Доступно только на тарифе Pro — проверку делает база. На порядок
   /// в шкале цен внутри карточки товара это не влияет: там всегда
   /// первым идёт тот, у кого дешевле.
-  Future<DateTime?> promoteOffer(String offerId, {int days = 7}) async {
+  Future<DateTime?> promoteOffer(String offerId, {int days = 3}) async {
     await _requireSession();
     try {
       final res = await supabase.rpc('promote_offer', params: {
@@ -356,6 +391,35 @@ class SupplierCabinetRepository {
         throw const Failure('Продвижение ещё не настроено на сервере');
       }
       throw _dbFail(e, 'Не удалось продвинуть товар');
+    }
+  }
+
+  /// Сводка по продвижению: остаток бесплатных подъёмов Pro и купленные
+  /// кредиты Буста по срокам.
+  Future<BoostStatus> boostStatus() async {
+    await _requireSession();
+    try {
+      final res = await supabase.rpc('my_boost_status');
+      return BoostStatus.fromJson(res as Map<String, dynamic>);
+    } catch (e) {
+      if (e.toString().contains('my_boost_status')) {
+        // Функции ещё нет (миграции 0020/0021) — считаем, что подъёмов нет
+        return const BoostStatus(isPro: false, freeLeft: 0, credits: {});
+      }
+      throw _dbFail(e, 'Не удалось получить статус продвижения');
+    }
+  }
+
+  /// Заявка на покупку Буста: qty подъёмов по days дней.
+  Future<void> orderBoost({required int days, required int qty}) async {
+    await _requireSession();
+    try {
+      await supabase.rpc('order_boost', params: {'p_days': days, 'p_qty': qty});
+    } catch (e) {
+      if (e.toString().contains('order_boost')) {
+        throw const Failure('Покупка Буста ещё не настроена на сервере');
+      }
+      throw _dbFail(e, 'Не удалось оформить заявку на Буст');
     }
   }
 

@@ -36,6 +36,12 @@ final myStatsProvider =
   return ref.read(supplierCabinetRepositoryProvider).stats(company.id);
 });
 
+/// Что доступно для подъёма в топ: остаток нормы Pro и купленные кредиты.
+final boostStatusProvider = FutureProvider<BoostStatus>((ref) async {
+  ref.watch(authStateProvider);
+  return ref.read(supplierCabinetRepositoryProvider).boostStatus();
+});
+
 /// Действия кабинета (добавление/сохранение/удаление/импорт).
 class CabinetController extends AsyncNotifier<void> {
   @override
@@ -126,13 +132,14 @@ class CabinetController extends AsyncNotifier<void> {
           ));
 
   /// Поднять товар в топ списков. Возвращает дату окончания или null.
-  Future<DateTime?> promoteOffer(String offerId, {int days = 7}) async {
+  Future<DateTime?> promoteOffer(String offerId, {int days = 3}) async {
     state = const AsyncLoading();
     try {
       final until = await ref
           .read(supplierCabinetRepositoryProvider)
           .promoteOffer(offerId, days: days);
       ref.invalidate(myProductsProvider);
+      ref.invalidate(boostStatusProvider);
       state = const AsyncData(null);
       return until;
     } catch (e, st) {
@@ -140,6 +147,12 @@ class CabinetController extends AsyncNotifier<void> {
       return null;
     }
   }
+
+  /// Заявка на покупку Буста. true — заявка ушла.
+  Future<bool> orderBoost({required int days, required int qty}) => _run(
+      () => ref
+          .read(supplierCabinetRepositoryProvider)
+          .orderBoost(days: days, qty: qty));
 
   Future<bool> deleteProduct(String productId) => _run(
       () => ref.read(supplierCabinetRepositoryProvider).deleteProduct(productId));

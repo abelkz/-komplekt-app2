@@ -13,11 +13,13 @@ class SubRequest {
     this.who,
     this.planUntil,
     this.planActive = false,
+    this.boostDays = 0,
+    this.boostQty = 0,
   });
 
   final int id;
   final String userId;
-  final String kind; // client | supplier
+  final String kind; // client | supplier | boost
   final String status; // new | contacted | paid | declined
   final DateTime createdAt;
 
@@ -27,6 +29,10 @@ class SubRequest {
   /// Действующий тариф: у клиента из профиля, у поставщика — из компании
   final DateTime? planUntil;
   final bool planActive;
+
+  /// Для заявок на Буст: срок подъёма и сколько штук
+  final int boostDays;
+  final int boostQty;
 
   bool get isNew => status == 'new';
   bool get forSupplier => kind == 'supplier';
@@ -144,6 +150,67 @@ class AdminRepository {
           .update({'status': status}).eq('id', requestId);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось изменить статус заявки');
+    }
+  }
+
+  /// Заявки на покупку Буста вместе с профилем заявителя.
+  Future<List<SubRequest>> boostOrders() async {
+    try {
+      final rows = await supabase
+          .from('boost_orders')
+          .select('id,user_id,days,qty,status,created_at')
+          .order('created_at', ascending: false);
+      if (rows.isEmpty) return const [];
+
+      final ids = {for (final r in rows) r['user_id'] as String}.toList();
+      final profiles = await supabase.from('profiles').select().inFilter('id', ids);
+      final byId = {
+        for (final p in profiles) p['id'].toString(): AppUser.fromMap(p)
+      };
+
+      return rows.map<SubRequest>((r) {
+        final days = (r['days'] as num).toInt();
+        final qty = (r['qty'] as num).toInt();
+        return SubRequest(
+          id: (r['id'] as num).toInt(),
+          userId: r['user_id'] as String,
+          kind: 'boost',
+          status: r['status'] as String? ?? 'new',
+          createdAt: DateTime.parse(r['created_at'] as String).toLocal(),
+          who: byId[r['user_id']],
+          boostDays: days,
+          boostQty: qty,
+        );
+      }).toList();
+    } catch (e) {
+      if (e.toString().contains('boost_orders')) {
+        throw const Failure('Таблица Буста ещё не создана — примените миграцию 0020');
+      }
+      throw mapError(e, fallback: 'Не удалось загрузить заявки на Буст');
+    }
+  }
+
+  /// Подтвердить оплату Буста: начислить кредиты поставщику.
+  Future<int> grantBoost(int orderId) async {
+    try {
+      final res =
+          await supabase.rpc('admin_grant_boost', params: {'p_order': orderId});
+      return (res as num?)?.toInt() ?? 0;
+    } catch (e) {
+      if (e.toString().contains('admin_grant_boost')) {
+        throw const Failure('Функция ещё не создана — примените миграцию 0021');
+      }
+      throw mapError(e, fallback: 'Не удалось начислить Буст');
+    }
+  }
+
+  Future<void> setBoostStatus(int orderId, String status) async {
+    try {
+      await supabase
+          .from('boost_orders')
+          .update({'status': status}).eq('id', orderId);
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось изменить статус');
     }
   }
 }

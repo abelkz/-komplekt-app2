@@ -23,16 +23,18 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
-          bottom: const TabBar(tabs: [
+          bottom: const TabBar(isScrollable: true, tabs: [
             Tab(text: 'Поставщики'),
             Tab(text: 'Тарифы'),
+            Tab(text: 'Буст'),
           ]),
         ),
-        body: const TabBarView(children: [_SuppliersTab(), _PlansTab()]),
+        body: const TabBarView(
+            children: [_SuppliersTab(), _PlansTab(), _BoostTab()]),
       ),
     );
   }
@@ -320,6 +322,137 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
               onPressed: _busy ? null : () => _status('declined'),
               child: const Text('Отказ'),
             ),
+          ),
+      ],
+    );
+  }
+}
+
+// ──────────────────────────── Буст ────────────────────────────
+
+class _BoostTab extends ConsumerWidget {
+  const _BoostTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(boostOrdersProvider);
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(boostOrdersProvider),
+      child: AsyncValueView<List<SubRequest>>(
+        value: list,
+        onRetry: () => ref.invalidate(boostOrdersProvider),
+        isEmpty: (d) => d.isEmpty,
+        empty: const _Empty('Заявок на Буст пока нет'),
+        data: (all) => ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          itemCount: all.length,
+          itemBuilder: (_, i) => _BoostCard(order: all[i]),
+        ),
+      ),
+    );
+  }
+}
+
+class _BoostCard extends ConsumerStatefulWidget {
+  const _BoostCard({required this.order});
+  final SubRequest order;
+
+  @override
+  ConsumerState<_BoostCard> createState() => _BoostCardState();
+}
+
+class _BoostCardState extends ConsumerState<_BoostCard> {
+  bool _busy = false;
+
+  Future<void> _grant() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final n = await ref.read(adminRepositoryProvider).grantBoost(widget.order.id);
+      ref.invalidate(boostOrdersProvider);
+      messenger.showSnackBar(
+          SnackBar(content: Text('Начислено подъёмов: $n')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _decline() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(adminRepositoryProvider).setBoostStatus(widget.order.id, 'declined');
+      ref.invalidate(boostOrdersProvider);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final o = widget.order;
+    final c = context.colors;
+    final who = o.who;
+    final title = who == null
+        ? 'Поставщик'
+        : (who.company.isNotEmpty ? who.company : who.fullName);
+    final phone = who?.phone ?? '';
+    final done = !o.isNew;
+
+    return _Card(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(title.isEmpty ? 'Поставщик' : title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+            _Tag(
+              text: o.status == 'paid'
+                  ? 'выдан'
+                  : o.status == 'declined'
+                      ? 'отказ'
+                      : 'новая',
+              color: o.status == 'paid'
+                  ? c.green
+                  : o.status == 'declined'
+                      ? c.red
+                      : c.orange,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${o.boostQty} × подъём на ${o.boostDays} '
+          '${o.boostDays == 1 ? 'день' : 'дней'} · ${_date(o.createdAt)}',
+          style: TextStyle(fontSize: 13, color: c.gray),
+        ),
+        if (phone.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _ContactRow(phone: phone),
+        ],
+        const SizedBox(height: 12),
+        if (!done)
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: _busy ? null : _grant,
+                  child: const Text('Оплачено — начислить'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(foregroundColor: c.red),
+                onPressed: _busy ? null : _decline,
+                child: const Text('Отказ'),
+              ),
+            ],
           ),
       ],
     );

@@ -43,10 +43,12 @@ final _volatile = <ProviderOrFamily>[
   myCompanyProvider,
   myProductsProvider,
   myStatsProvider,
+  boostStatusProvider,
 
   // Панель администратора
   supplierApplicationsProvider,
   subscriptionRequestsProvider,
+  boostOrdersProvider,
 
   // Поставщики
   nearbySuppliersProvider,

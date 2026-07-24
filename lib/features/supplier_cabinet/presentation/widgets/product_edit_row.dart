@@ -8,6 +8,7 @@ import '../../../catalog/presentation/widgets/product_thumb.dart';
 import '../../data/supplier_cabinet_repository.dart';
 import '../supplier_cabinet_providers.dart';
 import 'add_product_sheet.dart';
+import 'promote_sheet.dart';
 
 /// Строка редактирования товара в кабинете: цена, наличие, статистика.
 class ProductEditRow extends ConsumerStatefulWidget {
@@ -91,22 +92,14 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
         '${until.month.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _promote() async {
+  void _promote() {
     final id = _offerId;
     if (id == null) {
       _snack('Сначала сохраните цену');
       return;
     }
-    final until =
-        await ref.read(cabinetControllerProvider.notifier).promoteOffer(id);
-    if (!mounted) return;
-    if (until != null) {
-      _snack('Товар поднят в топ до ${until.day}.${until.month}');
-      return;
-    }
-    final e = ref.read(cabinetControllerProvider).error;
-    final t = e?.toString() ?? '';
-    _snack(t.startsWith('Failure: ') ? t.substring(9) : 'Не удалось продвинуть');
+    // Лист сам разберётся: бесплатная норма Pro или купленный Буст
+    showPromoteSheet(context, id);
   }
 
   Future<void> _delete() async {
