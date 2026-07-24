@@ -28,7 +28,11 @@ class SponsoredRow extends StatelessWidget {
     return Material(
       color: c.orangeSoft.withOpacity(0.35),
       child: InkWell(
-        onTap: () => context.push(Routes.product(p.id)),
+        // Тап по спонсорской строке ведёт в витрину этого поставщика —
+        // покупатель видит только его, без цен конкурентов (как в Kaspi).
+        onTap: () => o.supplierId != null
+            ? context.push(Routes.supplier(o.supplierId!))
+            : context.push(Routes.product(p.id)),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,

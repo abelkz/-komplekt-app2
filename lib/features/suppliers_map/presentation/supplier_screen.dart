@@ -8,6 +8,7 @@ import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/widgets/product_card.dart';
 import '../domain/supplier.dart';
 import 'suppliers_providers.dart';
+import 'widgets/supplier_reviews_section.dart';
 
 /// Экран 9 — Витрина/профиль продавца: контакты + его товары.
 class SupplierScreen extends ConsumerWidget {
@@ -28,6 +29,23 @@ class SupplierScreen extends ConsumerWidget {
         data: (s) => CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _Header(supplier: s)),
+            if ((s.about ?? '').isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Text(s.about!,
+                      style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: context.colors.gray)),
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: SupplierReviewsSection(supplierId: supplierId),
+              ),
+            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -106,25 +124,51 @@ class _Header extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(supplier.name,
-                        style: const TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w700)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(supplier.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.w700)),
+                        ),
+                        if (supplier.verified) ...[
+                          const SizedBox(width: 5),
+                          Icon(Icons.verified, size: 17, color: c.orange),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(Icons.star_rounded, size: 15, color: c.orange),
                         const SizedBox(width: 3),
-                        Text(supplier.rating.toStringAsFixed(1),
+                        Text(
+                            supplier.rating > 0
+                                ? supplier.rating.toStringAsFixed(1)
+                                : 'нет оценок',
                             style: const TextStyle(
                                 fontSize: 12, fontWeight: FontWeight.w600)),
                         const SizedBox(width: 10),
                         Icon(Icons.location_on_outlined,
                             size: 14, color: c.gray),
                         const SizedBox(width: 3),
-                        Text(supplier.city,
-                            style: TextStyle(fontSize: 12, color: c.gray)),
+                        Flexible(
+                          child: Text(supplier.city,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, color: c.gray)),
+                        ),
                       ],
                     ),
+                    if (supplier.yearsOnMarket != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        _yearsLabel(supplier.yearsOnMarket!),
+                        style: TextStyle(fontSize: 12, color: c.gray),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -172,6 +216,20 @@ class _Header extends StatelessWidget {
       ),
     );
   }
+}
+
+String _yearsLabel(int n) {
+  final m = n % 10, h = n % 100;
+  if (n == 0) return 'на рынке меньше года';
+  String word;
+  if (m == 1 && h != 11) {
+    word = 'год';
+  } else if (m >= 2 && m <= 4 && (h < 10 || h >= 20)) {
+    word = 'года';
+  } else {
+    word = 'лет';
+  }
+  return 'на рынке $n $word';
 }
 
 class _ContactButton extends StatelessWidget {

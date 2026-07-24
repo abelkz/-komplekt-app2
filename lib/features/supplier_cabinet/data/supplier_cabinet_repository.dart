@@ -215,6 +215,29 @@ class SupplierCabinetRepository {
     }
   }
 
+  /// Профиль компании для витрины: WhatsApp, сайт, год работы, описание.
+  Future<void> saveCompanyProfile({
+    String? whatsapp,
+    String? website,
+    int? sinceYear,
+    String? about,
+  }) async {
+    final uid = await _requireSession();
+    try {
+      await supabase.from('suppliers').update({
+        'whatsapp': _nullIfEmpty(whatsapp),
+        'website': _nullIfEmpty(website),
+        'since_year': sinceYear,
+        'about': _nullIfEmpty(about),
+      }).eq('owner_id', uid);
+    } catch (e) {
+      throw _dbFail(e, 'Не удалось сохранить профиль компании');
+    }
+  }
+
+  static String? _nullIfEmpty(String? s) =>
+      (s == null || s.trim().isEmpty) ? null : s.trim();
+
   /// Мой ассортимент — товары, на которые у меня есть предложение.
   ///
   /// Идём от предложений, а не от карточек: в общем каталоге поставщик

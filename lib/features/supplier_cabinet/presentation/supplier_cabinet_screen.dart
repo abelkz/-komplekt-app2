@@ -12,6 +12,7 @@ import '../../catalog/domain/product.dart';
 import '../../suppliers_map/domain/supplier.dart';
 import 'supplier_cabinet_providers.dart';
 import 'widgets/catalog_pick_sheet.dart';
+import 'widgets/company_profile_sheet.dart';
 import 'widgets/import_price_sheet.dart';
 import 'widgets/product_edit_row.dart';
 
@@ -374,6 +375,18 @@ class _CabinetBody extends ConsumerWidget {
                 ? 'Место на карте — изменить'
                 : 'Указать место на карте'),
             onPressed: () => context.push(Routes.supplierLocation),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.ink,
+              side: BorderSide(color: c.line),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              minimumSize: const Size.fromHeight(0),
+            ),
+            icon: Icon(Icons.storefront_outlined, size: 18, color: c.orange),
+            label: const Text('Профиль компании — WhatsApp, год, описание'),
+            onPressed: () => showCompanyProfileSheet(context, company),
           ),
           const SizedBox(height: 18),
 

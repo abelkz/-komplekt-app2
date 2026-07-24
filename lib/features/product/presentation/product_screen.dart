@@ -374,12 +374,25 @@ class _OfferCard extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
+                        // Имя ведёт в витрину поставщика: все его товары,
+                        // контакты, годы на рынке, отзывы.
                         Flexible(
-                          child: Text(offer.supplierName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w700)),
+                          child: GestureDetector(
+                            onTap: offer.supplierId == null
+                                ? null
+                                : () => context
+                                    .push(Routes.supplier(offer.supplierId!)),
+                            child: Text(offer.supplierName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    decoration: offer.supplierId == null
+                                        ? null
+                                        : TextDecoration.underline,
+                                    decorationColor: c.gray)),
+                          ),
                         ),
                         // Проверенная компания. Значок про документы,
                         // а не про оплату — и на порядок в шкале цен

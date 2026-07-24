@@ -11,6 +11,9 @@ class Supplier {
     this.description,
     this.logoUrl,
     this.rating = 0,
+    this.reviewsCount = 0,
+    this.sinceYear,
+    this.about,
     this.lat,
     this.lng,
     this.distanceM,
@@ -29,6 +32,19 @@ class Supplier {
   final String? description;
   final String? logoUrl;
   final double rating;
+  final int reviewsCount;
+
+  /// Год начала работы компании — для «N лет на рынке»
+  final int? sinceYear;
+  final String? about;
+
+  /// Сколько лет на рынке (по году начала работы)
+  int? get yearsOnMarket {
+    final y = sinceYear;
+    if (y == null || y < 1900) return null;
+    final n = DateTime.now().year - y;
+    return n < 0 ? null : n;
+  }
 
   /// Проверенная компания — администратор посмотрел документы.
   /// Значок не продаётся: он про проверку, а не про оплату.
@@ -91,6 +107,9 @@ class Supplier {
         description: m['description'] as String?,
         logoUrl: m['logo_url'] as String?,
         rating: (m['rating'] as num?)?.toDouble() ?? 0,
+        reviewsCount: (m['reviews_count'] as num?)?.toInt() ?? 0,
+        sinceYear: (m['since_year'] as num?)?.toInt(),
+        about: m['about'] as String?,
         verified: m['verified'] as bool? ?? false,
         plan: m['plan'] as String? ?? 'free',
         planUntil: m['plan_until'] != null
