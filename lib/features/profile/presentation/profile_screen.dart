@@ -28,6 +28,10 @@ class ProfileScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final favCount = ref.watch(favoriteIdsProvider).valueOrNull?.length ?? 0;
     final recentCount = ref.watch(recentSearchesProvider).length;
+    // Пункт панели — только для администратора; число рядом показывает,
+    // сколько заявок ждёт решения
+    final isAdmin = ref.watch(isAdminProvider);
+    final adminTodo = isAdmin ? ref.watch(adminPendingCountProvider) : 0;
 
     final name = profile.valueOrNull?.fullName.isNotEmpty == true
         ? profile.valueOrNull!.fullName
@@ -125,13 +129,10 @@ class ProfileScreen extends ConsumerWidget {
               ),
               // Пункт есть только у администратора: остальным база всё
               // равно ничего не отдаст, но и показывать его незачем
-              if (ref.watch(isAdminProvider))
+              if (isAdmin)
                 _MenuItemData(
                   'Панель администратора',
-                  () {
-                    final n = ref.watch(adminPendingCountProvider);
-                    return n == 0 ? 'заявки и тарифы' : 'ждут решения: $n';
-                  }(),
+                  adminTodo == 0 ? 'заявки и тарифы' : 'ждут решения: $adminTodo',
                   onTap: () => context.push(Routes.admin),
                 ),
             ]),

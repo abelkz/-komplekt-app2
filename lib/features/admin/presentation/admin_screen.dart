@@ -138,7 +138,7 @@ class _SupplierCardState extends ConsumerState<_SupplierCard> {
           ].join(' · '),
           style: TextStyle(fontSize: 13, color: c.gray),
         ),
-        if (u.phone != null && u.phone!.isNotEmpty) ...[
+        if ((u.phone ?? '').isNotEmpty) ...[
           const SizedBox(height: 8),
           _ContactRow(phone: u.phone!),
         ],
@@ -252,6 +252,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
     final title = who == null
         ? 'Пользователь'
         : (who.company.isNotEmpty ? who.company : who.fullName);
+    final phone = who?.phone ?? '';
 
     return _Card(
       children: [
@@ -284,9 +285,9 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                 fontSize: 13, color: c.green, fontWeight: FontWeight.w600),
           ),
         ],
-        if (who?.phone != null && who!.phone!.isNotEmpty) ...[
+        if (phone.isNotEmpty) ...[
           const SizedBox(height: 8),
-          _ContactRow(phone: who.phone!),
+          _ContactRow(phone: phone),
         ],
         const SizedBox(height: 12),
         Row(

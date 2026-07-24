@@ -93,7 +93,10 @@ class AdminRepository {
         final me = byId[uid];
         final company = byOwner[uid];
 
-        final plan = kind == 'supplier' ? company?['plan'] as String? : me?.plan;
+        // Скобки обязательны: без них `as String?` внутри тернарного
+        // оператора читается как начало ещё одного условия
+        final plan =
+            kind == 'supplier' ? (company?['plan'] as String?) : me?.plan;
         final until = kind == 'supplier'
             ? DateTime.tryParse(company?['plan_until'] as String? ?? '')
             : me?.planUntil;
