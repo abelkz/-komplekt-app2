@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write   # чтобы выложить APK в релиз
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -125,3 +128,19 @@ jobs:
           name: komplekt-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+
+      - name: Готовим файл APK с понятным именем
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: cp build/app/outputs/flutter-apk/app-debug.apk komplekt.apk
+
+      # Постоянная ссылка на последний APK:
+      # https://github.com/abelkz/-komplekt-app2/releases/download/latest/komplekt.apk
+      - name: Публикуем APK в релиз «latest»
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: КОМПЛЕКТ — последний APK
+          body: "Debug-сборка для Android. Обновляется автоматически при каждом изменении. Сборка ${{ github.sha }}"
+          prerelease: true
+          files: komplekt.apk
