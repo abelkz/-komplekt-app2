@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/collection.dart';
 import '../collections_providers.dart';
+import 'text_entry_page.dart';
 
 /// Лист выбора подборки: в какую именно положить товар.
 /// Открывается с карточки товара, когда подборок больше одной.
@@ -106,9 +107,12 @@ class _CollectionPicker extends ConsumerWidget {
   Future<void> _createAndAdd(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => const _NameDialog(),
+    final name = await promptText(
+      context,
+      title: 'Новая подборка',
+      label: 'Название',
+      hint: 'Например: Кафе · Атырау',
+      action: 'Создать',
     );
     if (name == null || name.isEmpty) return;
     try {
@@ -169,43 +173,4 @@ class _Row extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Ввод названия новой подборки.
-class _NameDialog extends StatefulWidget {
-  const _NameDialog();
-
-  @override
-  State<_NameDialog> createState() => _NameDialogState();
-}
-
-class _NameDialogState extends State<_NameDialog> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() => Navigator.pop(context, _ctrl.text.trim());
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Новая подборка'),
-        content: TextField(
-          controller: _ctrl,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _submit(),
-          decoration:
-              const InputDecoration(hintText: 'Например: Кафе · Атырау'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена')),
-          FilledButton(onPressed: _submit, child: const Text('Создать')),
-        ],
-      );
 }

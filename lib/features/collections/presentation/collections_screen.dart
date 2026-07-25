@@ -16,6 +16,7 @@ import '../../catalog/presentation/widgets/product_thumb.dart';
 import '../data/spec_export.dart';
 import '../domain/collection.dart';
 import 'collections_providers.dart';
+import 'widgets/text_entry_page.dart';
 
 /// Экран 7 — Подборки/проекты: позиции, количество, итог, экспорт.
 class CollectionsScreen extends ConsumerWidget {
@@ -77,9 +78,12 @@ class CollectionsScreen extends ConsumerWidget {
   /// никто не ловил — на вебе это роняло кадр и экран оставался пустым.
   Future<void> _createDialog(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => const _NewCollectionDialog(),
+    final name = await promptText(
+      context,
+      title: 'Новая подборка',
+      label: 'Название',
+      hint: 'Например: Кафе · Атырау',
+      action: 'Создать',
     );
     if (name == null || name.isEmpty) return;
 
@@ -94,83 +98,6 @@ class CollectionsScreen extends ConsumerWidget {
             : 'Не удалось создать подборку'),
       ));
     }
-  }
-}
-
-/// Переименование: то же поле ввода, но с текущим названием.
-class _RenameDialog extends StatefulWidget {
-  const _RenameDialog({required this.initial});
-  final String initial;
-
-  @override
-  State<_RenameDialog> createState() => _RenameDialogState();
-}
-
-class _RenameDialogState extends State<_RenameDialog> {
-  late final _ctrl = TextEditingController(text: widget.initial);
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() => Navigator.pop(context, _ctrl.text.trim());
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Название подборки'),
-        content: TextField(
-          controller: _ctrl,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _submit(),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена')),
-          FilledButton(onPressed: _submit, child: const Text('Сохранить')),
-        ],
-      );
-}
-
-/// Отдельный виджет — чтобы контроллер поля корректно освобождался.
-class _NewCollectionDialog extends StatefulWidget {
-  const _NewCollectionDialog();
-
-  @override
-  State<_NewCollectionDialog> createState() => _NewCollectionDialogState();
-}
-
-class _NewCollectionDialogState extends State<_NewCollectionDialog> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() => Navigator.pop(context, _ctrl.text.trim());
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Новая подборка'),
-      content: TextField(
-        controller: _ctrl,
-        autofocus: true,
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => _submit(),
-        decoration: const InputDecoration(hintText: 'Например: Кафе · Атырау'),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-        FilledButton(onPressed: _submit, child: const Text('Создать')),
-      ],
-    );
   }
 }
 
@@ -333,9 +260,12 @@ class _CollectionBlock extends ConsumerWidget {
   /// Переименование подборки.
   Future<void> _renameDialog(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => _RenameDialog(initial: collection.name),
+    final name = await promptText(
+      context,
+      title: 'Переименовать',
+      label: 'Название',
+      initial: collection.name,
+      action: 'Сохранить',
     );
     if (name == null || name.isEmpty || name == collection.name) return;
     try {
