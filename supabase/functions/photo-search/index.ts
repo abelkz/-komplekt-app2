@@ -40,6 +40,19 @@ Deno.serve(async (req) => {
     return json({ error: "На сервере не задан ANTHROPIC_API_KEY" }, 500);
   }
 
+  // Только вошедший пользователь: иначе платную модель может дёргать кто
+  // угодно по URL и жечь бюджет.
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return json({ error: "Нужно войти" }, 401);
+
+  const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+  const MAX_BASE64 = 7_000_000; // ~5 МБ картинка в base64
+
   let image: string, mediaType: string;
   try {
     const body = await req.json();
@@ -48,15 +61,15 @@ Deno.serve(async (req) => {
     if (typeof image !== "string" || image.length < 100) {
       return json({ error: "Не пришло изображение" }, 400);
     }
+    if (!ALLOWED.includes(mediaType)) {
+      return json({ error: "Формат не поддерживается: нужен JPEG, PNG или WebP" }, 400);
+    }
+    if (image.length > MAX_BASE64) {
+      return json({ error: "Фото слишком большое — до 5 МБ" }, 413);
+    }
   } catch {
     return json({ error: "Неверный формат запроса" }, 400);
   }
-
-  // ── Категории и марки из живой базы: без них модель придумает свои ──
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-  );
 
   const [{ data: categories }, { data: brands }] = await Promise.all([
     supabase.from("categories").select("slug,name").order("sort"),

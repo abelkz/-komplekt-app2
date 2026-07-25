@@ -67,6 +67,26 @@ Deno.serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceKey);
 
+    // Тариф поставщика и буст — только для СВОЕЙ компании. Если передан
+    // чужой supplier_id, отклоняем; если не передан — берём компанию юзера.
+    let effectiveSupplierId: number | null = null;
+    if (kind === 'pro_supplier' || kind === 'boost') {
+      const { data: mine } = await admin
+        .from('suppliers')
+        .select('id')
+        .eq('owner_id', user.id)
+        .order('id')
+        .limit(1)
+        .maybeSingle();
+      if (!mine) {
+        return json({ error: 'У вас нет компании поставщика' }, 400);
+      }
+      if (supplierId !== null && supplierId !== mine.id) {
+        return json({ error: 'Можно оплачивать только свою компанию' }, 403);
+      }
+      effectiveSupplierId = mine.id;
+    }
+
     // Запись платежа
     const { data: pay, error: payErr } = await admin
       .from('payments')
@@ -77,7 +97,7 @@ Deno.serve(async (req) => {
         months: kind === 'boost' ? null : months,
         boost_days: kind === 'boost' ? boostDays : null,
         boost_qty: kind === 'boost' ? boostQty : null,
-        supplier_id: supplierId,
+        supplier_id: effectiveSupplierId,
       })
       .select('id')
       .single();

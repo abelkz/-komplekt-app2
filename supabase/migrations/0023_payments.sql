@@ -71,9 +71,11 @@ begin
     res := 'КОМПЛЕКТ Про включён';
 
   elsif pay.kind = 'pro_supplier' then
+    -- Всегда своя компания: даже если в платёж передали чужой supplier_id,
+    -- применяем только к компании плательщика (owner_id = pay.user_id).
     select * into sup from public.suppliers
-     where (pay.supplier_id is not null and id = pay.supplier_id)
-        or (pay.supplier_id is null and owner_id = pay.user_id)
+     where owner_id = pay.user_id
+       and (pay.supplier_id is null or id = pay.supplier_id)
      order by id limit 1;
     if found then
       till := greatest(coalesce(sup.plan_until, now()), now())
@@ -83,9 +85,11 @@ begin
     res := 'Тариф Про поставщика включён';
 
   elsif pay.kind = 'boost' then
+    -- Всегда своя компания: даже если в платёж передали чужой supplier_id,
+    -- применяем только к компании плательщика (owner_id = pay.user_id).
     select * into sup from public.suppliers
-     where (pay.supplier_id is not null and id = pay.supplier_id)
-        or (pay.supplier_id is null and owner_id = pay.user_id)
+     where owner_id = pay.user_id
+       and (pay.supplier_id is null or id = pay.supplier_id)
      order by id limit 1;
     if found then
       for i in 1..coalesce(pay.boost_qty, 1) loop

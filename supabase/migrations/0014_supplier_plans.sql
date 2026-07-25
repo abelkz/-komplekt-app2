@@ -66,7 +66,7 @@ create index if not exists offers_promoted_idx
 create or replace function public.supplier_plan_active(p_plan text, p_until timestamptz)
 returns boolean
 language sql
-immutable
+stable                       -- зависит от now(); immutable кэшировал бы результат
 as $fn$
   select p_plan = 'pro' and (p_until is null or p_until > now());
 $fn$;

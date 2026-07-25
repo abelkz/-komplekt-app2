@@ -27,7 +27,7 @@ comment on column public.profiles.plan is
 create or replace function public.plan_active(p_plan text, p_until timestamptz)
 returns boolean
 language sql
-immutable
+stable                       -- зависит от now(); immutable кэшировал бы результат
 as $fn$
   select p_plan = 'pro' and (p_until is null or p_until > now());
 $fn$;
