@@ -406,28 +406,30 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   void _deleteAccountDialog(BuildContext context, WidgetRef ref) {
+    final messenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      // Закрываем диалог его собственным контекстом (dialogCtx): контекст
+      // экрана Профиля указывает на навигатор вкладки, и pop им закрывал
+      // сам экран — из-за этого «Отмена» давала белый экран.
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Удалить аккаунт?'),
         content: const Text(
             'Профиль, избранное, подборки и отзывы будут удалены безвозвратно.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogCtx),
               child: const Text('Отмена')),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: context.colors.red),
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.pop(dialogCtx);
               try {
                 await ref.read(authRepositoryProvider).deleteAccount();
               } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Не удалось удалить аккаунт')));
-                }
+                messenger.showSnackBar(const SnackBar(
+                    content: Text('Не удалось удалить аккаунт')));
               }
             },
             child: const Text('Удалить'),
