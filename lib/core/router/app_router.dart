@@ -68,12 +68,20 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: rootNavigatorKey,
     initialLocation: Routes.home,
     refreshListenable: refresh,
+    // Любой неизвестный адрес (обрывки после входа/ссылок) — на главную,
+    // а не «Page Not Found».
+    errorBuilder: (_, __) => const _RedirectHome(),
     redirect: (context, state) {
       final settings = ref.read(settingsProvider);
       final signedIn = ref.read(isSignedInProvider);
       final loc = state.matchedLocation;
 
-      // 0. Смену пароля из письма пропускаем всегда — иначе онбординг/вход
+      // 0a. Возврат от Google/Apple и писем приходит на корень «/», для
+      // которого маршрута нет (были «no routes for location: /»). Отправляем
+      // на главную — дальше сессия/онбординг разрулят ниже.
+      if (loc == '/') return Routes.home;
+
+      // 0b. Смену пароля из письма пропускаем всегда — иначе онбординг/вход
       // перехватит переход и человек не задаст новый пароль.
       if (loc == Routes.newPassword) return null;
 
@@ -198,3 +206,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Молча уводит на главную вместо экрана «страница не найдена».
+class _RedirectHome extends StatelessWidget {
+  const _RedirectHome();
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) context.go(Routes.home);
+    });
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+    );
+  }
+}
