@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/pricing.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
@@ -470,10 +471,9 @@ String _msg(Object e) {
 String _date(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
 
-/// Сумма заявки на Буст по прайсу: 1 дн — 1500, 3 дн — 3500, 7 дн — 7000.
+/// Сумма заявки на Буст по единому прайсу (Pricing).
 String _boostSum(SubRequest o) {
-  const price = {1: 1500, 3: 3500, 7: 7000};
-  final total = (price[o.boostDays] ?? 0) * o.boostQty;
+  final total = (Pricing.boost[o.boostDays] ?? 0) * o.boostQty;
   final s = total.toString();
   final b = StringBuffer();
   for (var i = 0; i < s.length; i++) {

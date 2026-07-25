@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/config/pricing.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../subscription/data/payment_service.dart';
 import '../../data/supplier_cabinet_repository.dart';
@@ -217,9 +218,8 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
   int _qty = 1;
   bool _busy = false;
 
-  // Цена Буста за один подъём по сроку
-  static const _price = {1: 1500, 3: 3500, 7: 7000};
-  int get _total => (_price[_days] ?? 0) * _qty;
+  // Цена Буста — из единой настройки Pricing
+  int get _total => (Pricing.boost[_days] ?? 0) * _qty;
 
   static String _tg(int v) {
     final s = v.toString();
@@ -300,10 +300,10 @@ class _BuyBoostSheetState extends ConsumerState<_BuyBoostSheet> {
             Wrap(
               spacing: 8,
               children: [
-                for (final d in [1, 3, 7])
+                for (final d in Pricing.boostDays)
                   ChoiceChip(
                     label: Text('$d ${d == 1 ? 'день' : 'дней'} · '
-                        '${_tg(_price[d] ?? 0)}'),
+                        '${_tg(Pricing.boost[d] ?? 0)}'),
                     selected: _days == d,
                     onSelected: (_) => setState(() => _days = d),
                   ),

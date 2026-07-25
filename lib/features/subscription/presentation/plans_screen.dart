@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
+import '../../../core/config/pricing.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../data/payment_service.dart';
 import '../data/subscription_repository.dart';
@@ -33,9 +34,9 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
 
   bool get _forSupplier => widget.kind == PlanKind.supplier;
 
-  // Цены вынесены сюда, чтобы менялись в одном месте
-  static const _clientPrice = 4900;
-  static const _supplierPrice = 9900;
+  // Цены — из единой настройки Pricing (см. lib/core/config/pricing.dart)
+  int get _clientPrice => Pricing.clientPro;
+  int get _supplierPrice => Pricing.supplierPro;
 
   List<(IconData, String, String)> get _features => _forSupplier
       ? const [
