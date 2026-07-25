@@ -112,8 +112,9 @@ jobs:
           fi
 
       - name: Analyze
-        run: flutter analyze
-        continue-on-error: true
+        # Гейт: падаем на ОШИБКАХ (сломанная сборка), но не на стилевых
+        # замечаниях — так ловим забытые импорты/скобки до сборки.
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Run tests
         run: flutter test

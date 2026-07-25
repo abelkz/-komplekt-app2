@@ -41,6 +41,25 @@ Deno.serve(async (req) => {
     if (!paymentId) return json({ code: 0 });
 
     const admin = createClient(supabaseUrl, serviceKey);
+
+    // Сверяем оплату с нашим счётом: подпись подтверждает, что уведомление
+    // от CloudPayments, а это — что заплатили ровно ту сумму и в той валюте,
+    // на которую мы выставили счёт. Иначе не выдаём.
+    const { data: pay } = await admin
+      .from('payments')
+      .select('amount, status')
+      .eq('id', paymentId)
+      .maybeSingle();
+    if (!pay) return json({ code: 0 }); // нет такого счёта — просто подтверждаем приём
+
+    const paidAmount = Math.round(Number(form.get('Amount') ?? '0'));
+    const currency = form.get('Currency') ?? 'KZT';
+    if (currency !== 'KZT' || paidAmount < Number(pay.amount)) {
+      // Сумма/валюта не совпали — не начисляем, но приём подтверждаем,
+      // чтобы CloudPayments не долбил повторами. Разбираемся вручную.
+      return json({ code: 0 });
+    }
+
     const { error } = await admin.rpc('fulfill_payment', { p_payment: paymentId });
     if (error) {
       // Вернём ненулевой код — CloudPayments повторит уведомление позже

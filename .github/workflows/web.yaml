@@ -66,6 +66,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze
+        # Гейт перед сборкой: ошибки (забытый импорт, скобка) валят раньше
+        # и понятнее, чем полная сборка. Стилевые замечания не блокируют.
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
       - name: Иконки из фирменного знака
         # Пропускаем, пока brand/logo.png не положили в репозиторий.
         # Ошибку не считаем фатальной: сайт важнее иконки.

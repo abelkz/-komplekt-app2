@@ -42,10 +42,17 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const kind: string = body.kind;
-    const months: number = Number(body.months ?? 1);
-    const boostDays: number = Number(body.boost_days ?? 1);
-    const boostQty: number = Number(body.boost_qty ?? 1);
     const supplierId = body.supplier_id ? Number(body.supplier_id) : null;
+
+    // Сроки и количество ограничиваем на сервере: из приложения нельзя
+    // оформить «Pro на 999 месяцев» или сотни бустов одним счётом.
+    const clamp = (v: unknown, min: number, max: number) => {
+      const n = Math.floor(Number(v));
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
+    };
+    const months = clamp(body.months ?? 1, 1, 12);
+    const boostDays = Number(body.boost_days ?? 1); // допустимость проверим ниже по прайсу
+    const boostQty = clamp(body.boost_qty ?? 1, 1, 20);
 
     // Сумма считается на сервере — из приложения цену не принимаем
     let amount = 0;
