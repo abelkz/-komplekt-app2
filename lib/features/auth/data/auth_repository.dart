@@ -161,8 +161,15 @@ class AuthRepository {
     if (newPassword.length < 6) {
       throw const Failure('Пароль — минимум 6 символов');
     }
+    // Нужна активная сессия восстановления — иначе смена не пройдёт.
+    if (supabase.auth.currentSession == null) {
+      throw const Failure(
+          'Ссылка устарела. Запросите письмо для сброса ещё раз.');
+    }
     try {
       await supabase.auth.updateUser(UserAttributes(password: newPassword));
+    } on AuthException catch (e) {
+      throw Failure(e.message); // настоящая причина от сервера
     } catch (err) {
       throw mapError(err, fallback: 'Не удалось сменить пароль');
     }

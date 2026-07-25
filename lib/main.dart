@@ -34,10 +34,16 @@ Future<void> main() async {
   final demo = Env.demoMode;
 
   if (!demo) {
-    // 2. Инициализируем Supabase (Auth + Postgres + Storage)
+    // 2. Инициализируем Supabase (Auth + Postgres + Storage).
+    // implicit-режим: ссылки из письма (сброс пароля) отдают токен прямо
+    // в адресе и работают на вебе без code_verifier, который терялся при
+    // очистке кэша/другой вкладке (в PKCE смена пароля падала).
     await Supabase.initialize(
       url: Env.supabaseUrl,
       anonKey: Env.supabaseAnonKey,
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.implicit,
+      ),
     );
 
     // 3. Пуши (FCM) — лучшая попытка: без настройки Firebase приложение
