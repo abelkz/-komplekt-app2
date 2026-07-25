@@ -133,9 +133,11 @@ class AuthRepository {
   /// Веб — на реальный адрес приложения (с учётом подпапки на GitHub Pages),
   /// а не на «Site URL» из настроек; нативка — по схеме приложения.
   String get _resetRedirect {
-    if (!kIsWeb) return 'kz.komplekt.app://reset-callback';
+    if (!kIsWeb) return 'kz.komplekt.app://reset-callback?recovery=1';
     final b = Uri.base; // напр. https://abelkz.github.io/-komplekt-app2/#/auth
-    return '${b.origin}${b.path}'; // https://abelkz.github.io/-komplekt-app2/
+    // Явная метка recovery=1 — по ней при старте точно понимаем, что это
+    // возврат из письма сброса, и ведём на экран нового пароля.
+    return '${b.origin}${b.path}?recovery=1';
   }
 
   /// Отправить письмо для сброса пароля. Работает только для настоящих

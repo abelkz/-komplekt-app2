@@ -19,6 +19,12 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/auth_providers.dart';
 import 'features/notifications/presentation/notifications_providers.dart';
 
+/// Пришли по ссылке сброса пароля? Ловим метку из адреса ДО того, как
+/// Supabase обработает и очистит URL. Проверяем на первом кадре.
+final bool gPasswordRecoveryLaunch =
+    Uri.base.queryParameters['recovery'] == '1' ||
+        Uri.base.fragment.contains('type=recovery');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -82,8 +88,13 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _watchForUser(Env.demoMode ? null : supabase.auth.currentUser?.id));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _watchForUser(Env.demoMode ? null : supabase.auth.currentUser?.id);
+      // Пришли из письма сброса пароля — сразу на экран нового пароля.
+      if (gPasswordRecoveryLaunch) {
+        rootNavigatorKey.currentContext?.go(Routes.newPassword);
+      }
+    });
   }
 
   @override

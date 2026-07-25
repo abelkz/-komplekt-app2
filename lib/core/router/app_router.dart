@@ -73,6 +73,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       final signedIn = ref.read(isSignedInProvider);
       final loc = state.matchedLocation;
 
+      // 0. Смену пароля из письма пропускаем всегда — иначе онбординг/вход
+      // перехватит переход и человек не задаст новый пароль.
+      if (loc == Routes.newPassword) return null;
+
       // 1. Сначала онбординг (выбор города)
       if (!settings.onboardingDone) {
         return loc == Routes.onboarding ? null : Routes.onboarding;
