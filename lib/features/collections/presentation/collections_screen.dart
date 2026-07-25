@@ -415,11 +415,19 @@ class _ItemRow extends ConsumerWidget {
   /// Ввод количества с клавиатуры — набирать 40 штук плюсиком невозможно.
   Future<void> _editQty(
       BuildContext context, CollectionsNotifier notifier, Product p) async {
-    final value = await showDialog<double>(
-      context: context,
-      builder: (_) => _QtyDialog(qty: item.qty, unit: p.unit, name: p.name),
+    final raw = await promptText(
+      context,
+      title: 'Количество',
+      subtitle: p.name,
+      label: 'Количество',
+      initial: Formatters.number(item.qty),
+      suffix: p.unit,
+      action: 'Готово',
+      keyboard: const TextInputType.numberWithOptions(decimal: true),
     );
-    if (value == null) return;
+    if (raw == null) return;
+    final value = double.tryParse(raw.replaceAll(',', '.').replaceAll(' ', ''));
+    if (value == null || value <= 0) return;
     try {
       await notifier.setQty(collectionId, p.id, value);
     } catch (_) {/* ошибку покажет сам экран при перезагрузке */}
@@ -491,75 +499,6 @@ class _ItemRow extends ConsumerWidget {
       ),
     );
   }
-}
-
-/// Ввод количества: поле сразу выделено, чтобы можно было набрать поверх.
-class _QtyDialog extends StatefulWidget {
-  const _QtyDialog({required this.qty, required this.unit, required this.name});
-  final double qty;
-  final String unit;
-  final String name;
-
-  @override
-  State<_QtyDialog> createState() => _QtyDialogState();
-}
-
-class _QtyDialogState extends State<_QtyDialog> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    final text = Formatters.number(widget.qty);
-    _ctrl = TextEditingController(text: text)
-      ..selection = TextSelection(baseOffset: 0, extentOffset: text.length);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final v = double.tryParse(_ctrl.text.replaceAll(',', '.').trim());
-    if (v == null || v <= 0) {
-      Navigator.pop(context);
-      return;
-    }
-    Navigator.pop(context, v);
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Количество'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: context.colors.gray)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _ctrl,
-              autofocus: true,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(suffixText: widget.unit),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена')),
-          FilledButton(onPressed: _submit, child: const Text('Готово')),
-        ],
-      );
 }
 
 class _Stepper extends StatelessWidget {
