@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/providers/data_refresh.dart';
 import '../../../../core/providers/providers.dart';
+import '../../../../core/utils/phone_input.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../suppliers_map/domain/supplier.dart';
 
@@ -98,7 +99,9 @@ class _CompanyProfileSheetState extends ConsumerState<_CompanyProfileSheet> {
               style: TextStyle(fontSize: 12, color: c.gray)),
           const SizedBox(height: 16),
           _field(_whatsapp, 'WhatsApp',
-              hint: '+7 700 000 00 00', keyboard: TextInputType.phone),
+              hint: '+7 700 000 0000',
+              keyboard: TextInputType.phone,
+              formatters: const [KzPhoneInputFormatter()]),
           const SizedBox(height: 12),
           _field(_website, 'Сайт (если есть)', hint: 'example.kz'),
           const SizedBox(height: 12),

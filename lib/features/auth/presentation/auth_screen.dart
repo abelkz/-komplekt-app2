@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/phone_input.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/tape_stripe.dart';
 import '../data/auth_repository.dart';
@@ -83,6 +84,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           onTap: () => setState(() {
                             _method = _Method.phone;
                             _error = null;
+                            // Сразу показываем «+7 7» — остаётся дописать номер
+                            if (_phone.text.isEmpty) {
+                              _phone.text = KzPhoneInputFormatter.initial;
+                            }
                           }),
                         ),
                       ],
@@ -235,7 +240,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         TextField(
           controller: _phone,
           keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(hintText: '+7 7XX XXX XX XX'),
+          inputFormatters: const [KzPhoneInputFormatter()],
+          onTap: () {
+            // Если поле пустое — сразу ставим «+7 7», чтобы не набирать код
+            if (_phone.text.isEmpty) {
+              _phone.text = KzPhoneInputFormatter.initial;
+            }
+          },
+          decoration: const InputDecoration(hintText: '+7 700 000 0000'),
         ),
         const SizedBox(height: 14),
         _label('Пароль'),

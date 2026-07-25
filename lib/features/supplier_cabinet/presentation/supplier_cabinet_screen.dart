@@ -7,6 +7,7 @@ import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/phone_input.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
@@ -144,7 +145,13 @@ class _BecomeSupplierState extends ConsumerState<_BecomeSupplier> {
           TextField(
             controller: _phone,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(hintText: '+7 7XX XXX XX XX'),
+            inputFormatters: const [KzPhoneInputFormatter()],
+            onTap: () {
+              if (_phone.text.isEmpty) {
+                _phone.text = KzPhoneInputFormatter.initial;
+              }
+            },
+            decoration: const InputDecoration(hintText: '+7 700 000 0000'),
           ),
           if (_error != null) ...[
             const SizedBox(height: 14),
