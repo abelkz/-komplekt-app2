@@ -130,9 +130,13 @@ class AuthRepository {
   Future<void> signOut() async => supabase.auth.signOut();
 
   /// Ссылка, куда вернётся человек по письму сброса пароля.
-  /// Веб — на сам сайт приложения; нативка — по схеме приложения.
-  static const _resetRedirect =
-      kIsWeb ? null : 'kz.komplekt.app://reset-callback';
+  /// Веб — на реальный адрес приложения (с учётом подпапки на GitHub Pages),
+  /// а не на «Site URL» из настроек; нативка — по схеме приложения.
+  String get _resetRedirect {
+    if (!kIsWeb) return 'kz.komplekt.app://reset-callback';
+    final b = Uri.base; // напр. https://abelkz.github.io/-komplekt-app2/#/auth
+    return '${b.origin}${b.path}'; // https://abelkz.github.io/-komplekt-app2/
+  }
 
   /// Отправить письмо для сброса пароля. Работает только для настоящих
   /// email: у входа по телефону адрес служебный (@example.com), туда письмо
