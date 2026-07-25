@@ -62,6 +62,14 @@ class AuthController extends AsyncNotifier<void> {
     await ref.read(authRepositoryProvider).signOut();
   }
 
+  /// Отправить письмо для сброса пароля.
+  Future<bool> sendPasswordReset(String email) =>
+      _run(() => ref.read(authRepositoryProvider).sendPasswordReset(email));
+
+  /// Задать новый пароль (после перехода по ссылке из письма).
+  Future<bool> updatePassword(String newPassword) =>
+      _run(() => ref.read(authRepositoryProvider).updatePassword(newPassword));
+
   /// Выполняет действие, прокидывая loading/error в state.
   /// Возвращает true при успехе.
   Future<bool> _run(Future<void> Function() action) async {

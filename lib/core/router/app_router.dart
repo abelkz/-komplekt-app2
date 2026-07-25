@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/admin/presentation/admin_screen.dart';
 import '../../features/auth/presentation/auth_providers.dart';
 import '../../features/auth/presentation/auth_screen.dart';
+import '../../features/auth/presentation/new_password_screen.dart';
 import '../../features/catalog/presentation/catalog_screen.dart';
 import '../../features/catalog/presentation/search_results_screen.dart';
 import '../../features/collections/presentation/collections_screen.dart';
@@ -29,6 +30,7 @@ class Routes {
   Routes._();
   static const onboarding = '/onboarding';
   static const auth = '/auth';
+  static const newPassword = '/new-password';
   static const home = '/home';
   static const favorites = '/favorites';
   static const collections = '/collections';
@@ -91,6 +93,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.auth,
         builder: (_, __) => const AuthScreen(),
+      ),
+      GoRoute(
+        path: Routes.newPassword,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const NewPasswordScreen(),
       ),
 
       // Основная оболочка с нижней навигацией (4 вкладки)

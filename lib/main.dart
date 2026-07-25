@@ -193,7 +193,10 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
     // Регистрируем/чистим FCM-токен при входе/выходе из аккаунта.
     ref.listen(authStateProvider, (_, next) {
       final event = next.valueOrNull?.event;
-      if (event == AuthChangeEvent.signedIn ||
+      if (event == AuthChangeEvent.passwordRecovery) {
+        // Пришли по ссылке из письма — ведём на экран смены пароля
+        rootNavigatorKey.currentContext?.go(Routes.newPassword);
+      } else if (event == AuthChangeEvent.signedIn ||
           event == AuthChangeEvent.initialSession ||
           event == AuthChangeEvent.tokenRefreshed) {
         PushService.syncToken();

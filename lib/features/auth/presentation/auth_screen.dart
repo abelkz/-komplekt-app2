@@ -218,6 +218,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           obscureText: true,
           decoration: const InputDecoration(hintText: 'минимум 6 символов'),
         ),
+        if (_mode == _Mode.login)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _forgotPassword,
+              style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 4)),
+              child: const Text('Забыли пароль?'),
+            ),
+          ),
       ];
 
   // ── Форма телефона ──
@@ -266,6 +276,62 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   String _primaryLabel() =>
       _mode == _Mode.login ? 'Войти' : 'Зарегистрироваться';
+
+  /// Сброс пароля: спрашиваем email и шлём письмо со ссылкой.
+  Future<void> _forgotPassword() async {
+    final ctrl = ref.read(authControllerProvider.notifier);
+    final emailCtrl = TextEditingController(text: _email.text.trim());
+    final messenger = ScaffoldMessenger.of(context);
+
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Восстановление пароля'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Введите email — пришлём ссылку для смены пароля. '
+                'Если вы входили по номеру телефона, восстановление по '
+                'email недоступно — напишите нам в WhatsApp, поможем.',
+                style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'you@mail.kz'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Отмена')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              child: const Text('Отправить')),
+        ],
+      ),
+    );
+
+    if (send != true) return;
+    final ok = await ctrl.sendPasswordReset(emailCtrl.text);
+    if (!mounted) return;
+    if (ok) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Письмо отправлено — проверьте почту и спам')));
+    } else {
+      final e = ref.read(authControllerProvider).error;
+      final t = e?.toString() ?? '';
+      messenger.showSnackBar(SnackBar(
+          content: Text(t.startsWith('Failure: ')
+              ? t.substring(9)
+              : 'Не удалось отправить письмо')));
+    }
+  }
 
   Future<void> _submit() async {
     setState(() => _error = null);

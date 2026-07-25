@@ -129,6 +129,39 @@ class AuthRepository {
 
   Future<void> signOut() async => supabase.auth.signOut();
 
+  /// Ссылка, куда вернётся человек по письму сброса пароля.
+  /// Веб — на сам сайт приложения; нативка — по схеме приложения.
+  static const _resetRedirect =
+      kIsWeb ? null : 'kz.komplekt.app://reset-callback';
+
+  /// Отправить письмо для сброса пароля. Работает только для настоящих
+  /// email: у входа по телефону адрес служебный (@example.com), туда письмо
+  /// не дойдёт — это на экране объясняем отдельно.
+  Future<void> sendPasswordReset(String email) async {
+    final e = email.trim();
+    if (e.isEmpty || !e.contains('@') || e.endsWith('@example.com')) {
+      throw const Failure('Введите настоящий email, на который придёт письмо');
+    }
+    try {
+      await supabase.auth.resetPasswordForEmail(e, redirectTo: _resetRedirect);
+    } catch (err) {
+      throw mapError(err, fallback: 'Не удалось отправить письмо');
+    }
+  }
+
+  /// Задать новый пароль (после перехода по ссылке из письма — когда уже
+  /// есть сессия восстановления).
+  Future<void> updatePassword(String newPassword) async {
+    if (newPassword.length < 6) {
+      throw const Failure('Пароль — минимум 6 символов');
+    }
+    try {
+      await supabase.auth.updateUser(UserAttributes(password: newPassword));
+    } catch (err) {
+      throw mapError(err, fallback: 'Не удалось сменить пароль');
+    }
+  }
+
   /// Профиль текущего пользователя из таблицы users.
   Future<AppUser?> myProfile() async {
     final uid = currentUser?.id;
