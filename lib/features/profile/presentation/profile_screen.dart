@@ -194,8 +194,13 @@ class ProfileScreen extends ConsumerWidget {
               ),
               icon: const Icon(Icons.logout_rounded, size: 18),
               label: const Text('Выйти'),
-              onPressed: () =>
-                  ref.read(authControllerProvider.notifier).signOut(),
+              // Ждём выхода и сразу уходим на экран входа: иначе редирект
+              // по сессии срабатывал на такт позже, и выход требовал двух
+              // нажатий.
+              onPressed: () async {
+                await ref.read(authControllerProvider.notifier).signOut();
+                if (context.mounted) context.go(Routes.auth);
+              },
             ),
             const SizedBox(height: 10),
             TextButton(
