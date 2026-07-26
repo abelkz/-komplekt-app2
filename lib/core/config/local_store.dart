@@ -30,6 +30,12 @@ class LocalStore {
   int get notifyThreshold => _prefs.getInt('notify_threshold') ?? 10;
   Future<void> setNotifyThreshold(int v) => _prefs.setInt('notify_threshold', v);
 
+  // Последний известный статус поставщика — чтобы поймать переход
+  // «на проверке» → «одобрен» и показать уведомление один раз.
+  String? get supplierStatusSeen => _prefs.getString('supplier_status_seen');
+  Future<void> setSupplierStatusSeen(String v) =>
+      _prefs.setString('supplier_status_seen', v);
+
   // Туры-знакомства (подсказки по кнопкам): показаны один раз.
   // id — 'home' (первый вход) или 'supplier' (первый заход в кабинет).
   bool tourSeen(String id) => _prefs.getBool('tour_$id') ?? false;

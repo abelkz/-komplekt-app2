@@ -195,6 +195,40 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
       ));
   }
 
+  /// Поставщику одобрили/отклонили заявку — показываем один раз.
+  /// Первый заход задаёт «базовый» статус без уведомления, чтобы уже
+  /// одобренных не поздравлять задним числом.
+  void _onSupplierStatus(String status) {
+    final store = ref.read(localStoreProvider);
+    final seen = store.supplierStatusSeen;
+    if (seen == status) return;
+    if (seen == null) {
+      store.setSupplierStatusSeen(status); // базовая отметка, без уведомления
+      return;
+    }
+
+    final messenger = scaffoldMessengerKey.currentState;
+    if (messenger == null) return; // покажем на следующем обновлении профиля
+    store.setSupplierStatusSeen(status);
+    if (status == 'approved') {
+      messenger
+        ?..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+          duration: Duration(seconds: 6),
+          content: Text(
+              '🎉 Заявка одобрена! Теперь можно размещать товары и цены.'),
+        ));
+    } else if (status == 'rejected') {
+      messenger
+        ?..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+          duration: Duration(seconds: 6),
+          content: Text(
+              'Заявка отклонена. Напишите нам — поможем разобраться.'),
+        ));
+    }
+  }
+
   /// Вернулись в приложение (или к вкладке браузера) — перечитываем данные.
   /// Раньше цену или включённый тариф было видно только после перезапуска.
   @override
@@ -206,6 +240,14 @@ class _KomplektAppState extends ConsumerState<KomplektApp>
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
+
+    // Ловим переход статуса поставщика (одобрен/отклонён) и показываем
+    // уведомление один раз — где бы человек ни находился в приложении.
+    ref.listen(myProfileProvider, (_, next) {
+      final me = next.valueOrNull;
+      if (me == null || me.role != 'supplier') return;
+      _onSupplierStatus(me.status);
+    });
 
     // Регистрируем/чистим FCM-токен при входе/выходе из аккаунта.
     ref.listen(authStateProvider, (_, next) {
