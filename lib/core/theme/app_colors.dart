@@ -47,42 +47,43 @@ class AppColors extends ThemeExtension<AppColors> {
 
   /// Константы бренда, не зависящие от темы: на жёлтом текст всегда тушью,
   /// а «рулетка» навигации всегда тёмная.
-  static const brandInk = Color(0xFF161410);
-  static const brandBone = Color(0xFFEAE5DA);
-  static const brandYellow = Color(0xFFF2B800);
+  // На жёлтом всегда тёмно-коричневый текст (on-primary из «Industrial Noir»).
+  static const brandInk = Color(0xFF241A00);
+  static const brandBone = Color(0xFFE3E2E2);
+  static const brandYellow = Color(0xFFFABD00);
 
-  // Светлая тема: тушь на кости
+  // Светлая тема: тёплая «кость» + золото, скруглённые поверхности.
   static const light = AppColors(
-    ink: Color(0xFF161410),
-    paper: Color(0xFFEAE5DA),
-    card: Color(0xFFF1ECE3),
-    line: Color(0xFFB5B1A8),
-    gray: Color(0xFF75726B),
-    faint: Color(0xFF8B877F),
-    orange: brandYellow,
-    orangeSoft: Color(0xFFF6E7AE),
-    green: Color(0xFF0D7A3F),
-    greenSoft: Color(0xFFD9E8DE),
-    red: Color(0xFFB3400E),
-    redSoft: Color(0xFFF2DCD2),
-    field: Color(0xFFF2EFE7),
+    ink: Color(0xFF1B1B1A),
+    paper: Color(0xFFF7F4EF),
+    card: Color(0xFFFFFFFF),
+    line: Color(0xFFE3DED3),
+    gray: Color(0xFF6B6558),
+    faint: Color(0xFF8F897C),
+    orange: Color(0xFFE0A500),
+    orangeSoft: Color(0xFFFBEFC7),
+    green: Color(0xFF12855A),
+    greenSoft: Color(0xFFDCEFE4),
+    red: Color(0xFFB3261E),
+    redSoft: Color(0xFFF7DAD7),
+    field: Color(0xFFF1EDE5),
   );
 
-  // Тёмная тема: кость на туши
+  // Тёмная тема — «Industrial Noir»: глубокий графит, тёплый золотой акцент.
   static const dark = AppColors(
-    ink: Color(0xFFEAE5DA),
-    paper: Color(0xFF161410),
-    card: Color(0xFF1E1B16),
-    line: Color(0xFF4B4842),
-    gray: Color(0xFF8B877F),
-    faint: Color(0xFF75726B),
-    orange: brandYellow,
+    ink: Color(0xFFE3E2E2), // on-surface
+    paper: Color(0xFF121414), // background
+    card: Color(0xFF1E2020), // surface-container
+    line: Color(0xFF4F4632), // outline-variant (тёплая рамка)
+    gray: Color(0xFFD4C5AB), // on-surface-variant (тёплый вторичный текст)
+    faint: Color(0xFF9C8F78), // outline (приглушённый)
+    orange: brandYellow, // золотой акцент
     orangeSoft: Color(0xFF3A2E10),
-    green: Color(0xFF0FA45A),
-    greenSoft: Color(0xFF13301E),
-    red: Color(0xFFD05A28),
-    redSoft: Color(0xFF34190F),
-    field: Color(0xFF221F19),
+    green: Color(0xFF35C88A),
+    greenSoft: Color(0xFF14331F),
+    red: Color(0xFFFFB4AB), // светлый лосось (рост цены / скидка)
+    redSoft: Color(0xFF4A1512),
+    field: Color(0xFF1E2020),
   );
 
   @override
@@ -144,11 +145,11 @@ extension AppColorsX on BuildContext {
   AppColors get colors => Theme.of(this).extension<AppColors>()!;
 }
 
-/// Скругления. В «Спецификации» углы острые — приложение выглядит
-/// как типографский документ, а не как набор мягких карточек.
+/// Скругления «Industrial Noir»: мягкие премиальные карточки.
+/// lg — крупные контейнеры и шторки, md — карточки, sm — кнопки/поля/чипы.
 class AppRadii {
   AppRadii._();
-  static const double lg = 0;
-  static const double md = 0;
-  static const double sm = 0;
+  static const double lg = 16;
+  static const double md = 12;
+  static const double sm = 8;
 }
