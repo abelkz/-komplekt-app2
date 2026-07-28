@@ -639,9 +639,10 @@ class _SendToSuppliersButton extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: c.orange,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadii.sm),
               ),
-              child: Icon(Icons.arrow_forward, color: c.ink, size: 18),
+              child: const Icon(Icons.arrow_forward,
+                  color: AppColors.brandInk, size: 18),
             ),
           ],
         ),
