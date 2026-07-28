@@ -8,8 +8,10 @@ class LocalStore {
   static Future<LocalStore> create() async =>
       LocalStore(await SharedPreferences.getInstance());
 
-  // Тема: 'light' | 'dark' | 'system'
-  String get themeMode => _prefs.getString('theme_mode') ?? 'system';
+  // Тема: 'light' | 'dark' | 'system'.
+  // По умолчанию — тёмная: премиум-вид «Industrial Noir» из макета.
+  // Явный выбор пользователя (переключатель в профиле) сохраняется.
+  String get themeMode => _prefs.getString('theme_mode') ?? 'dark';
   Future<void> setThemeMode(String v) => _prefs.setString('theme_mode', v);
 
   // Выбранный город
