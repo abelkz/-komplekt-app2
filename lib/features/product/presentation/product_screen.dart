@@ -217,8 +217,8 @@ class _ProductBody extends StatelessWidget {
   }
 }
 
-/// Фото образца с кроп-метками по углам, номером артикула и растворением
-/// нижнего края в фон — как отпечаток образца в типографской спецификации.
+/// Крупное фото товара — чистый скруглённый «герой» с мягким затемнением
+/// снизу и плашкой рейтинга, в духе «Industrial Noir».
 class _Hero extends StatelessWidget {
   const _Hero({required this.product});
   final Product product;
@@ -232,91 +232,63 @@ class _Hero extends StatelessWidget {
         ? Colors.white24
         : Colors.black12;
 
-    return SizedBox(
-      height: 250,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (url != null)
-            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
-          else
-            Container(
-              color: bg,
-              alignment: Alignment.center,
-              child: Icon(CategoryIcons.of(product.categorySlug),
-                  size: 64, color: onBg),
-            ),
-          // кроп-метки по четырём углам
-          const _CropMark(top: 16, left: 16),
-          const _CropMark(top: 16, right: 16),
-          const _CropMark(bottom: 16, left: 16),
-          const _CropMark(bottom: 16, right: 16),
-          // номер образца
-          Positioned(
-            top: 20,
-            left: 0,
-            right: 0,
-            child: Text(
-              product.sku.isNotEmpty
-                  ? 'ОБРАЗЕЦ № ${product.sku}'
-                  : 'ОБРАЗЕЦ',
-              textAlign: TextAlign.center,
-              style: AppTypography.mono(
-                size: 10,
-                color: AppColors.brandBone,
-                letterSpacing: 2,
-              ).copyWith(shadows: const [
-                Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
-              ]),
-            ),
-          ),
-          // растворение нижнего края в фон экрана
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: -1,
-            height: 90,
-            child: DecoratedBox(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      child: SizedBox(
+        height: 260,
+        width: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (url != null)
+              CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
+            else
+              Container(
+                color: bg,
+                alignment: Alignment.center,
+                child: Icon(CategoryIcons.of(product.categorySlug),
+                    size: 64, color: onBg),
+              ),
+            // лёгкое затемнение снизу для читаемости плашек
+            const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [c.paper.withValues(alpha: 0), c.paper],
+                  colors: [Colors.transparent, Colors.black45],
+                  stops: [0.55, 1],
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Уголок кроп-метки: две линии, как метки реза в типографии.
-class _CropMark extends StatelessWidget {
-  const _CropMark({this.top, this.bottom, this.left, this.right});
-
-  final double? top, bottom, left, right;
-
-  @override
-  Widget build(BuildContext context) {
-    const side = BorderSide(color: AppColors.brandBone, width: 2);
-    return Positioned(
-      top: top,
-      bottom: bottom,
-      left: left,
-      right: right,
-      child: Container(
-        width: 18,
-        height: 18,
-        decoration: BoxDecoration(
-          border: Border(
-            top: top != null ? side : BorderSide.none,
-            bottom: bottom != null ? side : BorderSide.none,
-            left: left != null ? side : BorderSide.none,
-            right: right != null ? side : BorderSide.none,
-          ),
+            // плашка рейтинга
+            if (product.rating > 0)
+              Positioned(
+                top: 12,
+                left: 12,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: c.accent,
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_rounded,
+                          size: 14, color: AppColors.brandInk),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Рейтинг ${product.rating.toStringAsFixed(1)}',
+                        style: AppTypography.sectionLabel(
+                                color: AppColors.brandInk)
+                            .copyWith(fontSize: 10, letterSpacing: 0.2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -350,17 +322,16 @@ class _OfferCard extends ConsumerWidget {
     }
     final barWidth = (100 - diff * 4).clamp(8, 100) / 100;
 
-    // Отметка на шкале цен: у лучшего предложения — жирный жёлтый штрих,
-    // у остальных — тонкая линейка. Чем дороже, тем бледнее строка.
+    // Карточка предложения: у лучшего — золотая рамка, остальные — обычная.
     return Container(
-      padding: const EdgeInsets.fromLTRB(15, 13, 6, 13),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(15, 14, 12, 14),
       decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(
-            color: best ? c.accent : c.ink.withValues(alpha: 0.35),
-            width: best ? 3 : 1.5,
-          ),
-          bottom: BorderSide(color: c.line),
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(
+          color: best ? c.accent : c.line,
+          width: best ? 1.5 : 1,
         ),
       ),
       child: Column(
@@ -606,15 +577,18 @@ class _MiniButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadii.sm),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-        decoration:
-            BoxDecoration(color: c.field, borderRadius: BorderRadius.circular(10)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: c.paper,
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          border: Border.all(color: c.line),
+        ),
         child: Row(
           children: [
-            Icon(icon, size: 15, color: c.ink),
+            Icon(icon, size: 15, color: c.orange),
             const SizedBox(width: 5),
             Text(label,
                 style:

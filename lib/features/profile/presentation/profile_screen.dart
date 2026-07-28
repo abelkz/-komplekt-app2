@@ -61,20 +61,21 @@ class ProfileScreen extends ConsumerWidget {
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 56,
+                    height: 56,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: c.orangeSoft,
-                      borderRadius: BorderRadius.circular(14),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: c.orange, width: 2),
                     ),
                     child: Text(initials,
                         style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            fontSize: 18,
+                            fontSize: 20,
                             color: c.orange)),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,13 +94,28 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
 
+            // Кабинет поставщика — отдельной заметной карточкой
+            _CabinetCard(
+              isSupplier: profile.valueOrNull?.isSupplier == true,
+              onTap: () => context.push(Routes.supplierCabinet),
+            ),
+            const SizedBox(height: 22),
+
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              child: Text('НАСТРОЙКИ',
+                  style: AppTypography.sectionLabel(color: c.faint)),
+            ),
+
             // Меню
             _MenuCard(items: [
               _MenuItemData('Сменить город', settings.city,
+                  icon: Icons.location_on_outlined,
                   onTap: () => _cityDialog(context, ref)),
               _MenuItemData(
                 'Тёмная тема',
                 settings.themeMode == ThemeMode.dark ? 'вкл' : 'выкл',
+                icon: Icons.dark_mode_outlined,
                 trailing: Switch(
                   value: settings.themeMode == ThemeMode.dark,
                   activeColor: c.orange,
@@ -110,6 +126,7 @@ class ProfileScreen extends ConsumerWidget {
               _MenuItemData(
                 'Уведомления о ценах',
                 '$favCount товаров',
+                icon: Icons.notifications_none_rounded,
                 onTap: () => context.push(Routes.notifications),
               ),
               _MenuItemData(
@@ -117,19 +134,14 @@ class ProfileScreen extends ConsumerWidget {
                 settings.notifyEnabled
                     ? 'порог ${settings.notifyThreshold}%'
                     : 'выкл',
+                icon: Icons.tune_rounded,
                 onTap: () => _notifyDialog(context, ref),
               ),
               _MenuItemData(
                 'История поиска',
                 '$recentCount запросов',
+                icon: Icons.history_rounded,
                 onTap: () => _recentSearchesSheet(context, ref),
-              ),
-              _MenuItemData(
-                profile.valueOrNull?.isSupplier == true
-                    ? 'Кабинет поставщика'
-                    : 'Стать поставщиком',
-                'прайс и товары',
-                onTap: () => context.push(Routes.supplierCabinet),
               ),
               // Пункт есть только у администратора: остальным база всё
               // равно ничего не отдаст, но и показывать его незачем
@@ -137,49 +149,81 @@ class ProfileScreen extends ConsumerWidget {
                 _MenuItemData(
                   'Панель администратора',
                   adminTodo == 0 ? 'заявки и тарифы' : 'ждут решения: $adminTodo',
+                  icon: Icons.shield_outlined,
                   onTap: () => context.push(Routes.admin),
                 ),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
             // Pro-апселл — открывает описание тарифа и оформление
             InkWell(
               borderRadius: BorderRadius.circular(AppRadii.md),
               onTap: () => context.push(Routes.plans()),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: c.orangeSoft,
-                  borderRadius: BorderRadius.circular(AppRadii.md),
-                  border: Border.all(color: c.orange.withOpacity(0.4)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [c.orange, Color.lerp(c.orange, Colors.white, 0.28)!],
+                  ),
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                              profile.valueOrNull?.isPro == true
-                                  ? '★ КОМПЛЕКТ Pro подключён'
-                                  : '★ КОМПЛЕКТ Pro',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: c.orange)),
-                          const SizedBox(height: 4),
-                          Text(
-                            profile.valueOrNull?.isPro == true
-                                ? _proUntilText(profile.valueOrNull!.planUntil)
-                                : 'Брендированные PDF-спецификации, история цен '
-                                    'и безлимитные подборки — 4 900 ₸/мес.',
-                            style: TextStyle(
-                                fontSize: 12, color: c.orange, height: 1.4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.brandInk.withOpacity(0.14),
+                            borderRadius: BorderRadius.circular(AppRadii.sm),
                           ),
-                        ],
-                      ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.workspace_premium_rounded,
+                                  size: 14, color: AppColors.brandInk),
+                              const SizedBox(width: 5),
+                              Text(
+                                profile.valueOrNull?.isPro == true
+                                    ? 'PRO АККАУНТ'
+                                    : 'КОМПЛЕКТ PRO',
+                                style: AppTypography.sectionLabel(
+                                        color: AppColors.brandInk)
+                                    .copyWith(fontSize: 10, letterSpacing: 0.4),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.verified_user_rounded,
+                            size: 22, color: AppColors.brandInk),
+                      ],
                     ),
-                    Icon(Icons.chevron_right, color: c.orange),
+                    const SizedBox(height: 12),
+                    Text(
+                      profile.valueOrNull?.isPro == true
+                          ? 'Премиум-доступ'
+                          : 'Больше возможностей',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                          color: AppColors.brandInk),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      profile.valueOrNull?.isPro == true
+                          ? _proUntilText(profile.valueOrNull!.planUntil)
+                          : 'Брендированные PDF-спецификации, история цен '
+                              'и безлимитные подборки — 4 900 ₸/мес.',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.brandInk.withOpacity(0.85),
+                          height: 1.4),
+                    ),
                   ],
                 ),
               ),
@@ -474,11 +518,69 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 class _MenuItemData {
-  _MenuItemData(this.title, this.value, {this.onTap, this.trailing});
+  _MenuItemData(this.title, this.value, {this.icon, this.onTap, this.trailing});
   final String title;
   final String value;
+  final IconData? icon;
   final VoidCallback? onTap;
   final Widget? trailing;
+}
+
+/// Заметная карточка входа в кабинет поставщика (как в макете).
+class _CabinetCard extends StatelessWidget {
+  const _CabinetCard({required this.isSupplier, required this.onTap});
+  final bool isSupplier;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Material(
+      color: c.card,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: c.line),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: c.orangeSoft,
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                ),
+                child: Icon(Icons.storefront_rounded, color: c.orange, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        isSupplier ? 'Кабинет поставщика' : 'Стать поставщиком',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 15)),
+                    const SizedBox(height: 3),
+                    Text('Управление товарами и запасами',
+                        style: TextStyle(fontSize: 12, color: c.gray)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: c.faint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MenuCard extends StatelessWidget {
@@ -510,15 +612,34 @@ class _MenuCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
+                    if (items[i].icon != null) ...[
+                      Container(
+                        width: 36,
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: c.paper,
+                          borderRadius: BorderRadius.circular(AppRadii.sm),
+                          border: Border.all(color: c.line),
+                        ),
+                        child: Icon(items[i].icon, size: 18, color: c.orange),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     Expanded(
                       child: Text(items[i].title,
-                          style: const TextStyle(fontSize: 14)),
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600)),
                     ),
                     items[i].trailing ??
                         Text(items[i].value,
                             style: TextStyle(fontSize: 12, color: c.gray)),
                     if (items[i].trailing == null && items[i].onTap != null)
-                      Icon(Icons.chevron_right, color: c.faint, size: 20),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child:
+                            Icon(Icons.chevron_right, color: c.faint, size: 20),
+                      ),
                   ],
                 ),
               ),
