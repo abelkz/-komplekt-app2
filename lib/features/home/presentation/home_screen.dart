@@ -1,6 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/onboarding/feature_tour.dart';
@@ -11,13 +11,12 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/category_icons.dart';
-import '../../../core/widgets/tape_stripe.dart';
 import '../../catalog/domain/category.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../notifications/presentation/notifications_providers.dart';
 
-/// Экран 3 — Главная: поиск, категории, лента вдохновения.
+/// Экран 3 — Главная: поиск, bento-категории, горячие предложения.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -31,12 +30,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Знакомство с приложением при первом входе — после отрисовки экрана
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTour());
   }
 
   Future<void> _maybeShowTour() async {
-    // небольшая пауза, чтобы экран успел встать на место
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     FeatureTour.maybeShow(
@@ -88,204 +85,138 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final c = context.colors;
     final categories = ref.watch(categoriesProvider);
     final feed = ref.watch(feedProvider);
-    final recent = ref.watch(recentSearchesProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
+    final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
-      body: Column(
-        children: [
-          const TapeStripe(),
-          Expanded(
-            child: SafeArea(
-              bottom: false,
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  ref.invalidate(feedProvider);
-                  ref.invalidate(categoriesProvider);
-                },
-                child: CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Шапка с переключателем темы
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'КОМПЛЕКТ / SPEC',
-                                    style: AppTypography.mono(color: c.gray),
-                                  ),
-                                ),
-                                KeyedSubtree(
-                                  key: TourKeys.bell,
-                                  child: Badge.count(
-                                    count: ref
-                                            .watch(unreadCountProvider)
-                                            .valueOrNull ??
-                                        0,
-                                    isLabelVisible: (ref
-                                                .watch(unreadCountProvider)
-                                                .valueOrNull ??
-                                            0) >
-                                        0,
-                                    child: _IconButton(
-                                      icon: Icons.notifications_none_rounded,
-                                      onTap: () =>
-                                          context.push(Routes.notifications),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _IconButton(
-                                  icon: isDark
-                                      ? Icons.light_mode_outlined
-                                      : Icons.dark_mode_outlined,
-                                  onTap: () => ref
-                                      .read(settingsProvider.notifier)
-                                      .toggleTheme(),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 22),
-                            // Крупный заголовок: «здесь» подсвечено жёлтым
-                            // маркером — как отметка в бумажной спецификации.
-                            Text.rich(
-                              TextSpan(
-                                children: [
-                                  const TextSpan(text: 'Сегодня\nдешевле '),
-                                  TextSpan(
-                                    text: 'здесь',
-                                    style: TextStyle(
-                                      color: AppColors.brandInk,
-                                      background: Paint()
-                                        ..color = AppColors.brandYellow,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              style:
-                                  AppTypography.unbounded(size: 30, color: c.ink),
-                            ),
-                            const SizedBox(height: 18),
-                            KeyedSubtree(
-                              key: TourKeys.search,
-                              child: _SearchBar(
-                                controller: _search,
-                                onSubmit: _doSearch,
-                                onVisualSearch: () =>
-                                    context.push(Routes.visualSearch),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            // Кнопка карты поставщиков
-                            KeyedSubtree(
-                              key: TourKeys.map,
-                              child: _MapButton(
-                                  onTap: () => context.push(Routes.map)),
-                            ),
-                            const SizedBox(height: 6),
-                            _SectionLabel('Категории'),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Сетка категорий
-                    SliverToBoxAdapter(
-                      child: categories.when(
-                        loading: () => const _GridSkeleton(),
-                        error: (_, __) => const SizedBox.shrink(),
-                        data: (list) => _CategoriesGrid(categories: list),
-                      ),
-                    ),
-
-                    // Недавние поиски
-                    if (recent.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _SectionLabel('Недавно искали'),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final r in recent)
-                                    ActionChip(
-                                      label: Text(r),
-                                      onPressed: () => _doSearch(r),
-                                    ),
-                                ],
-                              ),
-                            ],
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(feedProvider);
+            ref.invalidate(categoriesProvider);
+          },
+          child: CustomScrollView(
+            slivers: [
+              // ── Шапка: логотип + колокол + тема ──
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.architecture_rounded,
+                          color: c.orange, size: 24),
+                      const SizedBox(width: 8),
+                      Text('Komplekt',
+                          style: AppTypography.unbounded(
+                              size: 20, color: c.orange)),
+                      const Spacer(),
+                      KeyedSubtree(
+                        key: TourKeys.bell,
+                        child: Badge.count(
+                          count: unread,
+                          isLabelVisible: unread > 0,
+                          child: _IconButton(
+                            icon: Icons.notifications_none_rounded,
+                            onTap: () => context.push(Routes.notifications),
                           ),
                         ),
                       ),
-
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                        child: _SectionLabel('Лента вдохновения'),
+                      const SizedBox(width: 8),
+                      _IconButton(
+                        icon: isDark
+                            ? Icons.light_mode_outlined
+                            : Icons.dark_mode_outlined,
+                        onTap: () =>
+                            ref.read(settingsProvider.notifier).toggleTheme(),
                       ),
-                    ),
-
-                    // Masonry-лента (Pinterest)
-                    feed.when(
-                      loading: () => const SliverToBoxAdapter(
-                          child: Padding(
-                        padding: EdgeInsets.all(40),
-                        child:
-                            Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
-                      )),
-                      error: (_, __) => const SliverToBoxAdapter(
-                          child: SizedBox(height: 40)),
-                      data: (products) => SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                        sliver: SliverMasonryGrid.count(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childCount: products.length,
-                          itemBuilder: (_, i) =>
-                              _InspirationTile(product: products[i], index: i),
-                        ),
-                      ),
-                    ),
-
-                    // «Показать ещё» — догрузка следующей страницы ленты
-                    if (ref.watch(feedProvider).hasValue &&
-                        ref.read(feedProvider.notifier).hasMore)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          child: OutlinedButton(
-                            onPressed: () =>
-                                ref.read(feedProvider.notifier).loadMore(),
-                            child: const Text('Показать ещё'),
-                          ),
-                        ),
-                      )
-                    else
-                      const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+
+              // ── Заголовок + поиск + карта ──
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            const TextSpan(text: 'Сегодня '),
+                            TextSpan(
+                                text: 'дешевле',
+                                style: TextStyle(color: c.orange)),
+                            const TextSpan(text: ' здесь'),
+                          ],
+                        ),
+                        style: AppTypography.unbounded(size: 30, color: c.ink),
+                      ),
+                      const SizedBox(height: 18),
+                      KeyedSubtree(
+                        key: TourKeys.search,
+                        child: _SearchBar(
+                          controller: _search,
+                          onSubmit: _doSearch,
+                          onVisualSearch: () =>
+                              context.push(Routes.visualSearch),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      KeyedSubtree(
+                        key: TourKeys.map,
+                        child:
+                            _MapButton(onTap: () => context.push(Routes.map)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── Категории (bento) ──
+              SliverToBoxAdapter(
+                child: _SectionHeader(
+                  title: 'Категории',
+                  action: 'Все',
+                  onAction: null,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: categories.when(
+                  loading: () => const _GridSkeleton(),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (list) => _CategoriesBento(categories: list),
+                ),
+              ),
+
+              // ── Горячие предложения ──
+              SliverToBoxAdapter(
+                child: _SectionHeader(title: 'Горячие предложения', tag: 'SALE'),
+              ),
+              SliverToBoxAdapter(
+                child: feed.when(
+                  loading: () => const SizedBox(
+                    height: 190,
+                    child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.5)),
+                  ),
+                  error: (_, __) => const SizedBox(height: 8),
+                  data: (products) => _HotDealsRow(products: products),
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-// ── Поисковая строка ──
+// ── Поисковая строка (пилюля) ──
 class _SearchBar extends StatelessWidget {
   const _SearchBar({
     required this.controller,
@@ -300,11 +231,11 @@ class _SearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Container(
-      padding: const EdgeInsets.only(left: 13, right: 6),
+      padding: const EdgeInsets.only(left: 16, right: 6),
       decoration: BoxDecoration(
         color: c.card,
         border: Border.all(color: c.line),
-        borderRadius: BorderRadius.circular(AppRadii.md),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         children: [
@@ -316,27 +247,19 @@ class _SearchBar extends StatelessWidget {
               textInputAction: TextInputAction.search,
               onSubmitted: onSubmit,
               decoration: const InputDecoration(
-                hintText: 'Название или артикул…',
+                hintText: 'Поиск материалов…',
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 filled: false,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                contentPadding: EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
-          // Поиск по фото — заглушка MVP (кнопка есть, логика позже)
           IconButton(
             tooltip: 'Поиск по фото интерьера',
-            icon: Icon(Icons.camera_alt_outlined, color: c.gray, size: 20),
+            icon: Icon(Icons.qr_code_scanner_rounded, color: c.gray, size: 20),
             onPressed: onVisualSearch,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: FilledButton(
-              onPressed: () => onSubmit(controller.text),
-              child: const Text('Найти'),
-            ),
           ),
         ],
       ),
@@ -354,20 +277,19 @@ class _MapButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadii.md),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: c.card,
           border: Border.all(color: c.line),
           borderRadius: BorderRadius.circular(AppRadii.md),
         ),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.map_outlined, color: c.orange, size: 20),
             const SizedBox(width: 10),
             Text('Поставщики на карте',
                 style: TextStyle(fontWeight: FontWeight.w700, color: c.ink)),
-            const Spacer(),
-            Icon(Icons.chevron_right, color: c.faint),
           ],
         ),
       ),
@@ -375,125 +297,110 @@ class _MapButton extends StatelessWidget {
   }
 }
 
-class _CategoriesGrid extends StatelessWidget {
-  const _CategoriesGrid({required this.categories});
+// ── Bento-сетка категорий: крупная плитка + 2 колонки ──
+class _CategoriesBento extends StatelessWidget {
+  const _CategoriesBento({required this.categories});
   final List<Category> categories;
 
   @override
   Widget build(BuildContext context) {
+    if (categories.isEmpty) return const SizedBox.shrink();
+    final featured = categories.first;
+    final rest = categories.skip(1).toList();
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: categories.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
-          mainAxisSpacing: 9,
-          crossAxisSpacing: 9,
-          childAspectRatio: 0.86,
-        ),
-        itemBuilder: (_, i) => _CategoryTile(category: categories[i]),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      child: Column(
+        children: [
+          _FeaturedCategoryTile(category: featured),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: rest.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              mainAxisExtent: 92,
+            ),
+            itemBuilder: (_, i) => _CategoryTileSmall(category: rest[i]),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({required this.category});
+class _FeaturedCategoryTile extends StatelessWidget {
+  const _FeaturedCategoryTile({required this.category});
   final Category category;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppRadii.md),
-      onTap: () => context.push(Routes.catalog(category.slug),
-          extra: category.name),
-      child: Container(
-        decoration: BoxDecoration(
-          color: c.card,
-          border: Border.all(color: c.line),
-          borderRadius: BorderRadius.circular(AppRadii.md),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(CategoryIcons.of(category.slug), color: c.orange, size: 22),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Text(category.name,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w600, height: 1.2)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InspirationTile extends StatelessWidget {
-  const _InspirationTile({required this.product, required this.index});
-  final Product product;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    // Разная высота для эффекта masonry (Pinterest)
-    final height = 150.0 + (index % 4) * 34;
-    final bg = product.placeholderColor ?? c.field;
-    final onBg = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
-        ? Colors.white
-        : c.ink;
-    final mn = product.minPrice;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppRadii.md),
-      onTap: () => context.push(Routes.product(product.id)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadii.md),
+    return Material(
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      clipBehavior: Clip.antiAlias,
+      color: c.card,
+      child: InkWell(
+        onTap: () => context.push(Routes.catalog(category.slug),
+            extra: category.name),
         child: Container(
-          height: height,
-          color: bg,
+          height: 150,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: c.line),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [c.card, Color.lerp(c.card, Colors.black, 0.5)!],
+            ),
+          ),
           child: Stack(
-            fit: StackFit.expand,
             children: [
-              Center(
-                child: Icon(CategoryIcons.of(product.categorySlug),
-                    size: 40, color: onBg.withOpacity(0.35)),
-              ),
+              // крупная иконка-водяной знак
               Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
+                right: -10,
+                bottom: -10,
+                child: Icon(CategoryIcons.of(category.slug),
+                    size: 128, color: c.orange.withOpacity(0.12)),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(product.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: onBg,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            height: 1.25)),
-                    Text(
-                        mn == null
-                            ? Formatters.priceUnset
-                            : 'от ${Formatters.price(mn)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: onBg.withOpacity(mn == null ? 0.7 : 0.85),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600)),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: c.orange.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(AppRadii.md),
+                      ),
+                      child: Icon(CategoryIcons.of(category.slug),
+                          color: c.orange, size: 24),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(category.name,
+                            style: AppTypography.unbounded(
+                                size: 20, color: c.ink)),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text('Смотреть все',
+                                style: AppTypography.sectionLabel(
+                                    color: c.orange)),
+                            Icon(Icons.arrow_forward_rounded,
+                                size: 14, color: c.orange),
+                          ],
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -505,19 +412,212 @@ class _InspirationTile extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
+class _CategoryTileSmall extends StatelessWidget {
+  const _CategoryTileSmall({required this.category});
+  final Category category;
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 18, bottom: 10),
-        child: Text(text.toUpperCase(),
-            style: TextStyle(
-                fontSize: 10,
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w700,
-                color: context.colors.faint)),
-      );
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Material(
+      color: c.card,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push(Routes.catalog(category.slug),
+            extra: category.name),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            border: Border.all(color: c.line),
+          ),
+          child: Row(
+            children: [
+              Icon(CategoryIcons.of(category.slug), color: c.orange, size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(category.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600, height: 1.1)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Горячие предложения: горизонтальный ряд карточек ──
+class _HotDealsRow extends StatelessWidget {
+  const _HotDealsRow({required this.products});
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    if (products.isEmpty) return const SizedBox(height: 8);
+    // сначала — со скидкой, затем остальные
+    final sorted = [...products]
+      ..sort((a, b) => b.savingPercent.compareTo(a.savingPercent));
+    final list = sorted.take(10).toList();
+
+    return SizedBox(
+      height: 194,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: list.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, i) => _HotDealCard(product: list[i]),
+      ),
+    );
+  }
+}
+
+class _HotDealCard extends StatelessWidget {
+  const _HotDealCard({required this.product});
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final url = product.primaryImageUrl;
+    final bg = product.placeholderColor ?? c.field;
+    final mn = product.minPrice;
+    final saving = product.savingPercent;
+
+    return SizedBox(
+      width: 168,
+      child: Material(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.push(Routes.product(product.id)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 108,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (url != null)
+                      CachedNetworkImage(
+                        imageUrl: url,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(color: bg),
+                        errorWidget: (_, __, ___) => _ph(bg),
+                      )
+                    else
+                      _ph(bg),
+                    if (saving > 0)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: c.red,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text('-$saving%',
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(product.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Text(
+                        mn == null
+                            ? Formatters.priceUnset
+                            : Formatters.price(mn),
+                        style: AppTypography.unbounded(
+                            size: 15, color: mn == null ? c.faint : c.orange)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _ph(Color bg) => Builder(builder: (context) {
+        final onBg =
+            ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
+                ? Colors.white24
+                : Colors.black.withOpacity(0.18);
+        return Container(
+          color: bg,
+          alignment: Alignment.center,
+          child: Icon(CategoryIcons.of(product.categorySlug),
+              size: 36, color: onBg),
+        );
+      });
+}
+
+// ── Заголовок раздела ──
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(
+      {required this.title, this.action, this.onAction, this.tag});
+  final String title;
+  final String? action;
+  final VoidCallback? onAction;
+  final String? tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
+      child: Row(
+        children: [
+          Text(title,
+              style: AppTypography.unbounded(size: 17, color: c.ink)),
+          const SizedBox(width: 8),
+          if (tag != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: c.orange,
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+              ),
+              child: Text(tag!,
+                  style: AppTypography.sectionLabel(color: AppColors.brandInk)
+                      .copyWith(fontSize: 9)),
+            ),
+          const Spacer(),
+          if (action != null)
+            GestureDetector(
+              onTap: onAction,
+              child: Text(action!,
+                  style: AppTypography.sectionLabel(color: c.orange)),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _IconButton extends StatelessWidget {
@@ -528,14 +628,16 @@ class _IconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: Container(
-        width: 36,
-        height: 36,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-            color: c.field, borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, size: 18, color: c.ink),
+            color: c.card,
+            shape: BoxShape.circle,
+            border: Border.all(color: c.line)),
+        child: Icon(icon, size: 20, color: c.ink),
       ),
     );
   }
