@@ -152,73 +152,107 @@ class _ProductBody extends StatelessWidget {
     final offers = product.sortedOffers;
     final mn = product.minPrice ?? 0;
 
+    final best = offers.isNotEmpty ? offers.first : null;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.only(bottom: 24),
       children: [
         _Hero(product: product),
-        const SizedBox(height: 16),
-        Text(product.name,
-            style:
-                const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.3)),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            if (product.sku.isNotEmpty) _MetaChip('арт. ${product.sku}'),
-            if (product.brand.isNotEmpty) _MetaChip(product.brand),
-            _MetaChip('цена за ${product.unit}'),
-            if (product.rating > 0)
-              _MetaChip('★ ${product.rating.toStringAsFixed(1)}'),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: Text('ШКАЛА ЦЕН — ${offers.length} ПОСТ.',
-                  style: AppTypography.sectionLabel(color: c.gray)),
-            ),
-            if (offers.length > 1)
-              Text(
-                'Δ ${Formatters.price(offers.last.price - mn)}',
-                style: AppTypography.mono(size: 10, color: c.accent),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Ни одного предложения — объясняем, почему пусто
-        if (offers.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
-            decoration: BoxDecoration(border: Border.all(color: c.line)),
-            child: Text(
-              'Цена не указана — поставщики ещё не прислали прайс '
-              'на этот товар.',
-              style: TextStyle(fontSize: 13, color: c.gray, height: 1.35),
-            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Блок «лучшая цена + тренд за месяц»
+              if (best != null)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('ЛУЧШАЯ ЦЕНА',
+                              style:
+                                  AppTypography.sectionLabel(color: c.gray)),
+                          const SizedBox(height: 4),
+                          Text(Formatters.price(mn),
+                              style: AppTypography.unbounded(
+                                  size: 28, color: c.accent)),
+                        ],
+                      ),
+                    ),
+                    if (best.changePercent != null)
+                      _TrendPill(pct: best.changePercent!),
+                  ],
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 18, horizontal: 14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: c.line),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Text(
+                    'Цена не указана — поставщики ещё не прислали прайс '
+                    'на этот товар.',
+                    style: TextStyle(fontSize: 13, color: c.gray, height: 1.35),
+                  ),
+                ),
+
+              // Кнопки связи с лучшим поставщиком
+              if (best != null) ...[
+                const SizedBox(height: 16),
+                _ContactButtons(product: product, offer: best),
+              ],
+
+              // Характеристики (если есть что показать)
+              _SpecsCard(product: product),
+
+              // Все предложения — шкала цен всех поставщиков
+              if (offers.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Text('ВСЕ ПРЕДЛОЖЕНИЯ — ${offers.length} ПОСТ.',
+                          style: AppTypography.sectionLabel(color: c.gray)),
+                    ),
+                    if (offers.length > 1)
+                      Text(
+                        'Δ ${Formatters.price(offers.last.price - mn)}',
+                        style: AppTypography.mono(size: 10, color: c.accent),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                for (int i = 0; i < offers.length; i++)
+                  _OfferCard(
+                    offer: offers[i],
+                    minPrice: mn,
+                    best: i == 0,
+                    productId: product.id,
+                    productName: product.name,
+                  ),
+              ],
+
+              const SizedBox(height: 8),
+              PriceHistorySection(productId: product.id),
+              const SizedBox(height: 18),
+              ReviewsSection(productId: product.id),
+            ],
           ),
-        for (int i = 0; i < offers.length; i++)
-          _OfferCard(
-            offer: offers[i],
-            minPrice: mn,
-            best: i == 0,
-            productId: product.id,
-            productName: product.name,
-          ),
-        const SizedBox(height: 18),
-        PriceHistorySection(productId: product.id),
-        const SizedBox(height: 18),
-        ReviewsSection(productId: product.id),
+        ),
       ],
     );
   }
 }
 
-/// Крупное фото товара — чистый скруглённый «герой» с мягким затемнением
-/// снизу и плашкой рейтинга, в духе «Industrial Noir».
+/// Крупное фото товара на всю ширину: рейтинг сверху, название и
+/// подзаголовок поверх затемнения снизу — как в макете.
 class _Hero extends StatelessWidget {
   const _Hero({required this.product});
   final Product product;
@@ -232,64 +266,89 @@ class _Hero extends StatelessWidget {
         ? Colors.white24
         : Colors.black12;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadii.lg),
-      child: SizedBox(
-        height: 260,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (url != null)
-              CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
-            else
-              Container(
-                color: bg,
-                alignment: Alignment.center,
-                child: Icon(CategoryIcons.of(product.categorySlug),
-                    size: 64, color: onBg),
+    return SizedBox(
+      height: 320,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (url != null)
+            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
+          else
+            Container(
+              color: bg,
+              alignment: Alignment.center,
+              child: Icon(CategoryIcons.of(product.categorySlug),
+                  size: 72, color: onBg),
+            ),
+          // затемнение снизу под название
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black87],
+                stops: [0.4, 1],
               ),
-            // лёгкое затемнение снизу для читаемости плашек
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black45],
-                  stops: [0.55, 1],
+            ),
+          ),
+          // плашка рейтинга
+          if (product.rating > 0)
+            Positioned(
+              top: 12,
+              left: 16,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded,
+                        size: 14, color: AppColors.brandInk),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Рейтинг ${product.rating.toStringAsFixed(1)}',
+                      style: AppTypography.sectionLabel(
+                              color: AppColors.brandInk)
+                          .copyWith(fontSize: 10, letterSpacing: 0.2),
+                    ),
+                  ],
                 ),
               ),
             ),
-            // плашка рейтинга
-            if (product.rating > 0)
-              Positioned(
-                top: 12,
-                left: 12,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: c.accent,
-                    borderRadius: BorderRadius.circular(AppRadii.sm),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.star_rounded,
-                          size: 14, color: AppColors.brandInk),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Рейтинг ${product.rating.toStringAsFixed(1)}',
-                        style: AppTypography.sectionLabel(
-                                color: AppColors.brandInk)
-                            .copyWith(fontSize: 10, letterSpacing: 0.2),
-                      ),
-                    ],
-                  ),
+          // название + подзаголовок
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 18,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.unbounded(size: 26, color: Colors.white),
                 ),
-              ),
-          ],
-        ),
+                if (product.brand.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    product.brand,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, color: Colors.white70),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -533,19 +592,176 @@ class _AddToCollectionBar extends ConsumerWidget {
   }
 }
 
-class _MetaChip extends StatelessWidget {
-  const _MetaChip(this.text);
-  final String text;
+/// Плашка тренда цены за месяц: рост — красным, снижение — зелёным.
+class _TrendPill extends StatelessWidget {
+  const _TrendPill({required this.pct});
+  final num pct;
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-          color: c.field, borderRadius: BorderRadius.circular(999)),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w600, color: c.gray)),
+    final down = pct < 0;
+    final color = down ? c.green : c.red;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(down ? Icons.trending_down_rounded : Icons.trending_up_rounded,
+            size: 16, color: color),
+        const SizedBox(width: 4),
+        Text('${down ? '−' : '+'}${pct.abs()}% за мес.',
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+      ],
+    );
+  }
+}
+
+/// Три крупные кнопки связи с лучшим поставщиком (как в макете).
+class _ContactButtons extends ConsumerWidget {
+  const _ContactButtons({required this.product, required this.offer});
+  final Product product;
+  final Offer offer;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    void contact(Future<bool> Function() launch) {
+      ref.read(eventsRepositoryProvider).logContact(product.id, offer.supplierId);
+      launch();
+    }
+
+    final buttons = <Widget>[
+      if (offer.phone != null)
+        _BigContact(
+          icon: Icons.call_rounded,
+          label: 'Позвонить',
+          color: c.orange,
+          onTap: () => contact(() => Launchers.call(offer.phone!)),
+        ),
+      if (offer.whatsapp != null)
+        _BigContact(
+          icon: Icons.chat_rounded,
+          label: 'WhatsApp',
+          color: const Color(0xFF25D366),
+          onTap: () => contact(() => Launchers.whatsapp(offer.whatsapp!,
+              text: 'Здравствуйте! Интересует «${product.name}»')),
+        ),
+      if (offer.website != null)
+        _BigContact(
+          icon: Icons.language_rounded,
+          label: 'Сайт',
+          color: c.orange,
+          onTap: () => contact(() => Launchers.website(offer.website!)),
+        ),
+    ];
+    if (buttons.isEmpty) return const SizedBox.shrink();
+
+    final row = <Widget>[];
+    for (var i = 0; i < buttons.length; i++) {
+      if (i > 0) row.add(const SizedBox(width: 10));
+      row.add(Expanded(child: buttons[i]));
+    }
+    return Row(children: row);
+  }
+}
+
+class _BigContact extends StatelessWidget {
+  const _BigContact({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Material(
+      color: c.card,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            border: Border.all(color: c.line),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 6),
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Карточка характеристик из доступных полей товара.
+class _SpecsCard extends StatelessWidget {
+  const _SpecsCard({required this.product});
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final rows = <MapEntry<String, String>>[
+      if (product.brand.isNotEmpty) MapEntry('Бренд', product.brand),
+      if (product.sku.isNotEmpty) MapEntry('Артикул', product.sku),
+      if (product.unit.isNotEmpty) MapEntry('Единица', product.unit),
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: c.line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Характеристики',
+                  style: AppTypography.unbounded(size: 16, color: c.ink)),
+              const SizedBox(height: 12),
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0)
+                  Divider(height: 18, thickness: 1, color: c.line),
+                Row(
+                  children: [
+                    Text(rows[i].key,
+                        style: TextStyle(fontSize: 13, color: c.gray)),
+                    const Spacer(),
+                    Flexible(
+                      child: Text(rows[i].value,
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: c.ink)),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
