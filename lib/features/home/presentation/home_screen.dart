@@ -258,7 +258,7 @@ class _SearchBar extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Поиск по фото интерьера',
-            icon: Icon(Icons.qr_code_scanner_rounded, color: c.gray, size: 20),
+            icon: Icon(Icons.photo_camera_outlined, color: c.gray, size: 22),
             onPressed: onVisualSearch,
           ),
         ],

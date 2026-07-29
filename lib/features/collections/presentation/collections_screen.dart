@@ -165,24 +165,25 @@ class _CollectionBlock extends ConsumerWidget {
         if (collection.items.isNotEmpty) ...[
           for (final item in collection.items)
             _ItemRow(collectionId: collection.id, item: item),
-          const SizedBox(height: 8),
-          // Итог
-          // Итог документа: жирная линейка, моно-подпись и крупная сумма
+          const SizedBox(height: 12),
+          // Итог: золотая карточка с крупной суммой по лучшим ценам
           Container(
-            padding: const EdgeInsets.only(top: 18, bottom: 4),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: c.ink, width: 1.5)),
+              color: c.orangeSoft,
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              border: Border.all(color: c.orange.withOpacity(0.35)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
                   child: Text('ИТОГО ПО ЛУЧШИМ ЦЕНАМ',
-                      style: AppTypography.sectionLabel(color: c.gray)),
+                      style: AppTypography.sectionLabel(color: c.orange)),
                 ),
                 const SizedBox(width: 10),
                 Text(Formatters.priceOr(collection.total, fallback: '—'),
-                    style: AppTypography.unbounded(size: 26, color: c.ink)),
+                    style: AppTypography.unbounded(size: 24, color: c.ink)),
               ],
             ),
           ),
@@ -612,8 +613,9 @@ class _SendToSuppliersButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: c.ink,
+          color: c.card,
           borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(color: c.line),
         ),
         child: Row(
           children: [
@@ -623,13 +625,12 @@ class _SendToSuppliersButton extends StatelessWidget {
                 children: [
                   Text('Отправить заявку поставщикам',
                       style: TextStyle(
-                          color: c.paper,
+                          color: c.ink,
                           fontSize: 14,
                           fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
                   Text('ответ с предложением — в чат',
-                      style: TextStyle(
-                          color: c.paper.withOpacity(0.6), fontSize: 12)),
+                      style: TextStyle(color: c.gray, fontSize: 12)),
                 ],
               ),
             ),

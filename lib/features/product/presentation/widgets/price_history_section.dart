@@ -58,18 +58,12 @@ class PriceHistorySection extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height: 64,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _SparkPainter(
-                    series,
-                    line: diff <= 0 ? c.green : c.red,
-                    grid: c.line,
-                  ),
-                ),
+              _BarChart(
+                values: series.length > 16
+                    ? series.sublist(series.length - 16)
+                    : series,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
                 diff == 0
                     ? 'Цена держится на ${Formatters.price(last)}'
@@ -131,7 +125,11 @@ class _Frame extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(border: Border.all(color: c.line)),
+          decoration: BoxDecoration(
+            color: c.card,
+            border: Border.all(color: c.line),
+            borderRadius: BorderRadius.circular(AppRadii.md),
+          ),
           child: child,
         ),
       ],
@@ -168,45 +166,48 @@ class _Locked extends StatelessWidget {
   }
 }
 
-/// Ломаная по минимальным ценам дня — без подписей, только форма кривой.
-class _SparkPainter extends CustomPainter {
-  _SparkPainter(this.values, {required this.line, required this.grid});
-
+/// Столбчатая диаграмма минимальных цен по дням — последний столбик золотой
+/// (текущая цена), как в макете.
+class _BarChart extends StatelessWidget {
+  const _BarChart({required this.values});
   final List<double> values;
-  final Color line;
-  final Color grid;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (values.length < 2) return;
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    if (values.isEmpty) return const SizedBox(height: 120);
 
-    final mn = values.reduce((a, b) => a < b ? a : b);
-    final mx = values.reduce((a, b) => a > b ? a : b);
+    var mn = values.first, mx = values.first;
+    for (final v in values) {
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
     final span = (mx - mn).abs() < 0.01 ? 1.0 : mx - mn;
 
-    final gridPaint = Paint()
-      ..color = grid
-      ..strokeWidth = 1;
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), gridPaint);
-
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1);
-      final y = size.height - (values[i] - mn) / span * (size.height - 6) - 3;
-      i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
-    }
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = line
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round,
+    return SizedBox(
+      height: 120,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < values.length; i++)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    height: 14 + (values[i] - mn) / span * 100,
+                    decoration: BoxDecoration(
+                      color: i == values.length - 1 ? c.orange : c.line,
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(3)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(covariant _SparkPainter old) =>
-      old.values != values || old.line != line;
 }
