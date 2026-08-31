@@ -91,23 +91,19 @@ workflows:
         script: flutter pub get
 
       - name: Подпись — создать сертификат и профиль при первом запуске
-        # Порядок важен: сначала получаем/создаём распространительный
-        # сертификат (нужен Admin-ключ App Store Connect), затем профиль,
-        # затем кладём всё в связку ключей и применяем к проекту.
+        # Ошибки НЕ маскируем: если создание сертификата не пройдёт (например
+        # у ключа нет прав Admin), шаг покраснеет и покажет реальную причину.
         script: |
+          set -e
           keychain initialize
-          # Забрать уже сохранённые в Codemagic сертификаты (если есть)
-          app-store-connect certificates list \
-            --type IOS_DISTRIBUTION \
-            --save || true
-          # Если ни одного нет — создать новый распространительный сертификат
-          app-store-connect certificates create \
-            --type IOS_DISTRIBUTION \
-            --save || true
-          # Создать/получить профиль App Store и зарегистрировать Bundle ID
+          echo "── Существующие распространительные сертификаты ──"
+          app-store-connect certificates list --type IOS_DISTRIBUTION --json || true
+          echo "── Создаём сертификат (или берём существующий) ──"
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save \
+            || app-store-connect certificates list --type IOS_DISTRIBUTION --save
+          echo "── Профиль App Store + регистрация Bundle ID ──"
           app-store-connect fetch-signing-files "kz.komplekt.app" \
-            --type IOS_APP_STORE \
-            --create
+            --type IOS_APP_STORE --create
           keychain add-certificates
           xcode-project use-profiles
 
