@@ -91,16 +91,16 @@ workflows:
         script: flutter pub get
 
       - name: Подпись — сертификат и профиль
-        # Приватный ключ берём из переменной CERTIFICATE_PRIVATE_KEY (secure).
-        # fetch-signing-files с этим ключом: при первом запуске создаёт
-        # распространительный сертификат и профиль, дальше переиспользует их —
-        # без превышения лимита сертификатов Apple.
+        # Приватный ключ хранится в CERTIFICATE_PRIVATE_KEY как base64 (одна
+        # строка — чтобы переносы строк не терялись). Раскодируем его в файл,
+        # затем fetch-signing-files создаёт/переиспользует сертификат и профиль.
         script: |
           set -e
           keychain initialize
+          echo "$CERTIFICATE_PRIVATE_KEY" | openssl base64 -d -A > /tmp/cert_key.pem
           app-store-connect fetch-signing-files "kz.komplekt.app" \
             --type IOS_APP_STORE \
-            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --certificate-key=@file:/tmp/cert_key.pem \
             --create
           keychain add-certificates
           xcode-project use-profiles
