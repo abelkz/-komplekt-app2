@@ -49,6 +49,10 @@ dependencies:
   # ── Связь с продавцом (звонок / WhatsApp / сайт) ──
   url_launcher: ^6.3.0
 
+  # ── Вход через Apple (нативная кнопка на iOS, требование App Store) ──
+  sign_in_with_apple: ^6.1.4
+  crypto: ^3.0.3
+
   # ── HTTP: геокодер адреса поставщика (Nominatim/OpenStreetMap) ──
   http: ^1.2.2
 

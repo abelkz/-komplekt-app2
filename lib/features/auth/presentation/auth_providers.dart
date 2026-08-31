@@ -51,6 +51,10 @@ class AuthController extends AsyncNotifier<void> {
   Future<bool> signInWithProvider(OAuthProvider provider) => _run(() =>
       ref.read(authRepositoryProvider).signInWithProvider(provider));
 
+  /// Вход через Apple: нативное окно на iOS, браузер на остальных.
+  Future<bool> signInWithApple() =>
+      _run(() => ref.read(authRepositoryProvider).signInWithApple());
+
   Future<bool> sendOtp(String phone) =>
       _run(() => ref.read(authRepositoryProvider).sendPhoneOtp(phone));
 

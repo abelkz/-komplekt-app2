@@ -1,4 +1,10 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
@@ -83,6 +89,71 @@ class AuthRepository {
       }
       throw mapError(e, fallback: 'Не удалось начать вход');
     }
+  }
+
+  /// Вход через Apple.
+  ///
+  /// На iOS/macOS открываем нативное системное окно Apple (требование
+  /// App Store к приложениям, где есть другой вход через соцсети) и меняем
+  /// полученный токен на сессию Supabase. На вебе/Android нативного окна нет —
+  /// используем обычный OAuth через браузер.
+  Future<void> signInWithApple() async {
+    final native = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+    if (!native) return signInWithProvider(OAuthProvider.apple);
+
+    try {
+      // nonce защищает токен от повторного использования: отправляем Apple
+      // его хэш, а в Supabase — исходное значение для сверки.
+      final rawNonce = _randomNonce();
+      final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+
+      final cred = await SignInWithApple.getAppleIDCredential(
+        scopes: const [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: hashedNonce,
+      );
+      final idToken = cred.identityToken;
+      if (idToken == null) {
+        throw const Failure('Не удалось получить токен Apple');
+      }
+
+      await supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.apple,
+        idToken: idToken,
+        nonce: rawNonce,
+      );
+
+      // Имя Apple отдаёт только при самом первом входе — сохраняем в профиль.
+      final name = [cred.givenName, cred.familyName]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(' ')
+          .trim();
+      if (name.isNotEmpty) {
+        try {
+          await supabase.auth
+              .updateUser(UserAttributes(data: {'full_name': name}));
+        } catch (_) {/* имя не критично */}
+      }
+    } on SignInWithAppleAuthorizationException catch (e) {
+      // Пользователь закрыл окно — это не ошибка, молча выходим.
+      if (e.code == AuthorizationErrorCode.canceled) return;
+      throw Failure('Вход через Apple не удался: ${e.message}');
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось войти через Apple');
+    }
+  }
+
+  /// Случайная строка для nonce (Apple Sign In).
+  static String _randomNonce([int length = 32]) {
+    const chars =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
+    final rnd = Random.secure();
+    return List.generate(length, (_) => chars[rnd.nextInt(chars.length)])
+        .join();
   }
 
   /// Номер телефона → служебный email для Supabase Auth.

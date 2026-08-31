@@ -148,9 +148,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     _ProviderButton(
                       label: 'Продолжить с Apple',
                       icon: Icon(Icons.apple, size: 20, color: c.ink),
-                      onTap: loading
-                          ? null
-                          : () => _oauth(OAuthProvider.apple),
+                      onTap: loading ? null : _appleSignIn,
                     ),
                   ],
                 ),
@@ -382,11 +380,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     // При успехе redirect в роутере сам переведёт на главную.
   }
 
-  /// Вход через внешнего провайдера (Google / Apple).
+  /// Вход через внешнего провайдера (Google).
   Future<void> _oauth(OAuthProvider provider) async {
     setState(() => _error = null);
     final ok =
         await ref.read(authControllerProvider.notifier).signInWithProvider(provider);
+    if (!ok && mounted) {
+      final err = ref.read(authControllerProvider).error;
+      setState(() => _error = err is Object ? _msg(err) : 'Не удалось войти');
+    }
+  }
+
+  /// Вход через Apple: нативное окно на iOS, браузер на остальных.
+  Future<void> _appleSignIn() async {
+    setState(() => _error = null);
+    final ok =
+        await ref.read(authControllerProvider.notifier).signInWithApple();
     if (!ok && mounted) {
       final err = ref.read(authControllerProvider).error;
       setState(() => _error = err is Object ? _msg(err) : 'Не удалось войти');

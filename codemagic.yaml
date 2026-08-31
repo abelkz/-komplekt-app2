@@ -92,6 +92,17 @@ workflows:
           sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = kz.komplekt.app;/g" \
             ios/Runner.xcodeproj/project.pbxproj
 
+      - name: Вход через Apple — entitlement
+        # Возможность «Sign in with Apple» требует entitlement в проекте.
+        # Создаём файл и прописываем путь к нему во все конфигурации Runner.
+        script: |
+          set -e
+          printf '%s' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>' > ios/Runner/Runner.entitlements
+          /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin array" ios/Runner/Runner.entitlements
+          /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin:0 string Default" ios/Runner/Runner.entitlements
+          sed -i '' -E 's#(PRODUCT_BUNDLE_IDENTIFIER = kz\.komplekt\.app;)#\1 CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;#g' \
+            ios/Runner.xcodeproj/project.pbxproj
+
       - name: Flutter-зависимости
         script: flutter pub get
 
