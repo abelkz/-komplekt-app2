@@ -24,9 +24,6 @@ workflows:
     integrations:
       app_store_connect: komplekt_appstore
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: kz.komplekt.app
       groups:
         - supabase
       flutter: stable
@@ -93,8 +90,16 @@ workflows:
       - name: Flutter-зависимости
         script: flutter pub get
 
-      - name: Подпись (профили из App Store Connect)
-        script: xcode-project use-profiles
+      - name: Подпись — создать сертификат и профиль при первом запуске
+        # --create: если сертификата/профиля ещё нет, Codemagic создаст их
+        # и заодно зарегистрирует Bundle ID kz.komplekt.app у Apple.
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "kz.komplekt.app" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
 
       - name: Сборка .ipa
         script: |
