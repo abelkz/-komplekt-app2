@@ -58,6 +58,11 @@ workflows:
             "Доступ к камере нужен, чтобы сфотографировать товар для карточки."
           set_str NSLocationWhenInUseUsageDescription \
             "Геопозиция нужна, чтобы показать поставщиков рядом с вами на карте."
+          # Приложение использует только стандартное шифрование (HTTPS) —
+          # освобождено от экспортных требований. Чтобы Apple не спрашивала
+          # про шифрование при каждой загрузке в TestFlight.
+          /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$P"
           /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$P"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string tel" "$P"
