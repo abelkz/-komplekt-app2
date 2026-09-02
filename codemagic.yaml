@@ -107,9 +107,11 @@ workflows:
         script: flutter pub get
 
       - name: Иконка приложения из brand/logo.png
-        # Папка ios/ создаётся заново, поэтому иконку генерируем при каждой
-        # сборке — иначе остаётся стандартный значок Flutter.
-        script: dart run flutter_launcher_icons
+        # Папки android/ в iOS-сборке нет, поэтому свой конфиг только для iOS
+        # (общий из pubspec падает на отсутствии AndroidManifest.xml).
+        script: |
+          printf 'flutter_launcher_icons:\n  image_path: "brand/logo.png"\n  ios: true\n  remove_alpha_ios: true\n' > ios_icons.yaml
+          dart run flutter_launcher_icons -f ios_icons.yaml
 
       - name: Подпись — сертификат и профиль
         # Приватный ключ хранится в CERTIFICATE_PRIVATE_KEY как base64 (одна
