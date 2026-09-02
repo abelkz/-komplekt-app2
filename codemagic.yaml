@@ -86,10 +86,14 @@ workflows:
           sed -i '' -E "s/IPHONEOS_DEPLOYMENT_TARGET = 1[0-2]\.[0-9]+;/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/g" \
             ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Зафиксировать Bundle ID
-        # На случай, если flutter create поставил другой идентификатор.
+      - name: Зафиксировать Bundle ID и только iPhone
+        # Фиксируем идентификатор и делаем приложение только для iPhone
+        # (TARGETED_DEVICE_FAMILY = 1) — тогда App Store не требует
+        # отдельных скриншотов для iPad.
         script: |
           sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = kz.komplekt.app;/g" \
+            ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' -E 's/TARGETED_DEVICE_FAMILY = "?1,2"?;/TARGETED_DEVICE_FAMILY = "1";/g' \
             ios/Runner.xcodeproj/project.pbxproj
 
       - name: Вход через Apple — entitlement
