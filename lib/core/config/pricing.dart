@@ -1,3 +1,16 @@
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
+/// Скрывать ли покупки внутри приложения.
+///
+/// На iOS App Store требует продавать цифровые услуги только через Apple
+/// In-App Purchase (правило 3.1.1). Пока IAP не подключён — в iOS-сборке
+/// кнопки оплаты (тариф Pro, бусты) скрыты, иначе приложение отклонят.
+/// На вебе и Android оплата через CloudPayments работает как прежде.
+/// Когда подключим Apple IAP — заменим это на нормальную покупку.
+bool get iapPurchasesHidden =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
 /// Единственное место с ценами тарифов и бустов на стороне приложения.
 ///
 /// Это цены для ПОКАЗА. Реальную сумму к оплате считает сервер

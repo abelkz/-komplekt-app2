@@ -105,20 +105,24 @@ class _PromoteSheet extends ConsumerWidget {
           )
         else
           ...options,
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: c.ink,
-            side: BorderSide(color: c.line),
-            minimumSize: const Size.fromHeight(46),
+        // На iOS покупка буста скрыта, пока не подключён Apple IAP
+        // (иначе App Store отклонит). На вебе/Android — как прежде.
+        if (!iapPurchasesHidden) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.ink,
+              side: BorderSide(color: c.line),
+              minimumSize: const Size.fromHeight(46),
+            ),
+            icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+            label: const Text('Купить Буст'),
+            onPressed: () {
+              Navigator.pop(context);
+              showBuyBoostSheet(context);
+            },
           ),
-          icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
-          label: const Text('Купить Буст'),
-          onPressed: () {
-            Navigator.pop(context);
-            showBuyBoostSheet(context);
-          },
-        ),
+        ],
       ],
     );
   }

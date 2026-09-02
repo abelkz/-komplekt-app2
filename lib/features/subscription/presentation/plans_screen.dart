@@ -250,28 +250,40 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
           ],
 
           const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              onPressed: _sending ? null : _order,
-              child: _sending
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.brandInk))
-                  : const Text('Оформить'),
+          // На iOS оплата цифровой подписки возможна только через Apple IAP —
+          // пока он не подключён, кнопку покупки скрываем (иначе App Store
+          // отклонит). На вебе/Android — обычная оплата.
+          if (iapPurchasesHidden)
+            Text(
+              'Оформление тарифа появится в одном из ближайших обновлений '
+              'приложения.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: c.gray, height: 1.4),
+            )
+          else ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16)),
+                onPressed: _sending ? null : _order,
+                child: _sending
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.brandInk))
+                    : const Text('Оформить'),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Оплата картой, Apple Pay или Google Pay через CloudPayments. '
-            'Тариф включается сразу после оплаты.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: c.faint, height: 1.4),
-          ),
+            const SizedBox(height: 10),
+            Text(
+              'Оплата картой, Apple Pay или Google Pay через CloudPayments. '
+              'Тариф включается сразу после оплаты.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: c.faint, height: 1.4),
+            ),
+          ],
         ],
       ),
     );
