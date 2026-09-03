@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/moderation/review_moderation.dart';
+import '../../../../core/providers/providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/review.dart';
 import '../product_providers.dart';
@@ -14,6 +16,7 @@ class ReviewsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final reviews = ref.watch(reviewsProvider(productId));
+    ref.watch(moderationTickProvider); // перечитать при жалобе/скрытии
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,15 +45,24 @@ class ReviewsSection extends ConsumerWidget {
           ),
           error: (_, __) =>
               Text('Не удалось загрузить отзывы', style: TextStyle(color: c.gray)),
-          data: (list) => list.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Пока нет отзывов — будьте первым.',
-                      style: TextStyle(color: c.gray, fontSize: 13)),
-                )
-              : Column(
-                  children: [for (final r in list) _ReviewTile(review: r)],
-                ),
+          data: (list) {
+            final store = ref.read(localStoreProvider);
+            final visible = [
+              for (final r in list)
+                if (!store.isReviewHidden(r.id) &&
+                    !(r.authorId != null && store.isUserBlocked(r.authorId!)))
+                  r
+            ];
+            return visible.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('Пока нет отзывов — будьте первым.',
+                        style: TextStyle(color: c.gray, fontSize: 13)),
+                  )
+                : Column(
+                    children: [for (final r in visible) _ReviewTile(review: r)],
+                  );
+          },
         ),
       ],
     );
@@ -91,6 +103,7 @@ class _ReviewTile extends StatelessWidget {
                       fontSize: 13, fontWeight: FontWeight.w700)),
               const Spacer(),
               _Stars(review.rating),
+              ReportMenu(reviewId: review.id, authorId: review.authorId),
             ],
           ),
           if (review.text != null && review.text!.isNotEmpty) ...[
@@ -176,6 +189,12 @@ class _ReviewFormState extends ConsumerState<_ReviewForm> {
             maxLines: 3,
             decoration:
                 const InputDecoration(hintText: 'Поделитесь впечатлением…'),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Оставляя отзыв, вы соглашаетесь не публиковать оскорбительный '
+            'или незаконный контент.',
+            style: TextStyle(fontSize: 11, color: context.colors.gray),
           ),
           const SizedBox(height: 16),
           SizedBox(

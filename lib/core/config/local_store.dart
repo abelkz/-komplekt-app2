@@ -48,4 +48,19 @@ class LocalStore {
       _prefs.getStringList('recent_searches') ?? const [];
   Future<void> setRecentSearches(List<String> v) =>
       _prefs.setStringList('recent_searches', v);
+
+  // ── Модерация пользовательского контента (отзывы) ──
+  // Скрытые отзывы и заблокированные авторы — чтобы пользователь мог убрать
+  // оскорбительный контент из своей ленты (требование App Store 1.2).
+  List<String> get hiddenReviews =>
+      _prefs.getStringList('hidden_reviews') ?? const [];
+  bool isReviewHidden(String id) => hiddenReviews.contains(id);
+  Future<void> hideReview(String id) =>
+      _prefs.setStringList('hidden_reviews', {...hiddenReviews, id}.toList());
+
+  List<String> get blockedUsers =>
+      _prefs.getStringList('blocked_users') ?? const [];
+  bool isUserBlocked(String id) => blockedUsers.contains(id);
+  Future<void> blockUser(String id) =>
+      _prefs.setStringList('blocked_users', {...blockedUsers, id}.toList());
 }
