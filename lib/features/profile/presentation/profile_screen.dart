@@ -476,9 +476,12 @@ class ProfileScreen extends ConsumerWidget {
               Navigator.pop(dialogCtx);
               try {
                 await ref.read(authRepositoryProvider).deleteAccount();
-              } catch (_) {
-                messenger.showSnackBar(const SnackBar(
-                    content: Text('Не удалось удалить аккаунт')));
+              } catch (e) {
+                final t = e.toString();
+                messenger.showSnackBar(SnackBar(
+                    content: Text(t.startsWith('Failure: ')
+                        ? t.substring(9)
+                        : 'Не удалось удалить аккаунт')));
               }
             },
             child: const Text('Удалить'),
