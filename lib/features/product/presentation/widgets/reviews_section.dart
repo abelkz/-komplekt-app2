@@ -108,7 +108,11 @@ class _ReviewTile extends StatelessWidget {
                       fontSize: 13, fontWeight: FontWeight.w700)),
               const Spacer(),
               _Stars(review.rating),
-              ReportMenu(reviewId: review.id, authorId: review.authorId),
+              ReportMenu(
+                reviewId: review.id,
+                target: 'product_review',
+                authorId: review.authorId,
+              ),
             ],
           ),
           if (review.text != null && review.text!.isNotEmpty) ...[

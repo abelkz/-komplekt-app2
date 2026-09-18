@@ -20,12 +20,17 @@ final subscriptionRequestsProvider = FutureProvider<List<SubRequest>>(
 final boostOrdersProvider = FutureProvider<List<SubRequest>>(
     (ref) => ref.read(adminRepositoryProvider).boostOrders());
 
+final contentReportsProvider = FutureProvider<List<ContentReport>>(
+    (ref) => ref.read(adminRepositoryProvider).reports());
+
 /// Сколько дел ждёт решения — число на вкладке профиля.
 final adminPendingCountProvider = Provider<int>((ref) {
   final suppliers = ref.watch(supplierApplicationsProvider).valueOrNull ?? [];
   final subs = ref.watch(subscriptionRequestsProvider).valueOrNull ?? [];
   final boosts = ref.watch(boostOrdersProvider).valueOrNull ?? [];
+  final reports = ref.watch(contentReportsProvider).valueOrNull ?? [];
   return suppliers.where((s) => s.isPending).length +
       subs.where((s) => s.isNew).length +
-      boosts.where((s) => s.isNew).length;
+      boosts.where((s) => s.isNew).length +
+      reports.where((r) => r.isNew).length;
 });

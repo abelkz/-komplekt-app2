@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/pricing.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../auth/domain/app_user.dart';
@@ -24,7 +25,7 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
@@ -32,10 +33,15 @@ class AdminScreen extends ConsumerWidget {
             Tab(text: 'Поставщики'),
             Tab(text: 'Тарифы'),
             Tab(text: 'Буст'),
+            Tab(text: 'Жалобы'),
           ]),
         ),
-        body: const TabBarView(
-            children: [_SuppliersTab(), _PlansTab(), _BoostTab()]),
+        body: const TabBarView(children: [
+          _SuppliersTab(),
+          _PlansTab(),
+          _BoostTab(),
+          _ReportsTab(),
+        ]),
       ),
     );
   }
@@ -564,4 +570,196 @@ class _Empty extends StatelessWidget {
               style: TextStyle(color: context.colors.gray)),
         ),
       );
+}
+
+/// Разбор жалоб на отзывы. Появился вместе с миграцией 0025 — до неё жалобы
+/// не сохранялись вовсе.
+class _ReportsTab extends ConsumerWidget {
+  const _ReportsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(contentReportsProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(contentReportsProvider),
+      child: AsyncValueView<List<ContentReport>>(
+        value: list,
+        onRetry: () => ref.invalidate(contentReportsProvider),
+        isEmpty: (d) => d.isEmpty,
+        empty: const _Empty('Жалоб пока нет'),
+        data: (all) {
+          // Неразобранные наверх — с ними и нужно что-то делать.
+          final sorted = [...all]..sort((a, b) {
+              if (a.isNew == b.isNew) return 0;
+              return a.isNew ? -1 : 1;
+            });
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            itemCount: sorted.length,
+            itemBuilder: (_, i) => _ReportCard(report: sorted[i]),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ReportCard extends ConsumerStatefulWidget {
+  const _ReportCard({required this.report});
+  final ContentReport report;
+
+  @override
+  ConsumerState<_ReportCard> createState() => _ReportCardState();
+}
+
+class _ReportCardState extends ConsumerState<_ReportCard> {
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() action, String done) async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await action();
+      ref.invalidate(contentReportsProvider);
+      messenger.showSnackBar(SnackBar(content: Text(done)));
+    } catch (e) {
+      final t = e.toString();
+      messenger.showSnackBar(SnackBar(
+          content: Text(t.startsWith('Failure: ') ? t.substring(9) : 'Ошибка')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Удаление необратимо, поэтому спрашиваем подтверждение.
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Удалить отзыв?'),
+        content: const Text(
+            'Отзыв исчезнет у всех, и все жалобы на него закроются. '
+            'Отменить будет нельзя.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Отмена')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Удалить')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _run(
+      () => ref.read(adminRepositoryProvider).deleteReview(widget.report),
+      'Отзыв удалён',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final r = widget.report;
+    final text = r.reviewText;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border.all(color: r.isNew ? c.orange : c.line),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                r.onSupplier ? 'Отзыв о поставщике' : 'Отзыв о товаре',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Text(Formatters.relativeDate(r.createdAt),
+                  style: TextStyle(fontSize: 11, color: c.faint)),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Текста может не быть: отзыв уже удалён или недоступен.
+          Text(
+            (text == null)
+                ? 'Отзыв не найден — возможно, уже удалён'
+                : (text.isEmpty ? 'Отзыв без текста, только оценка' : text),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.4,
+              color: text == null ? c.faint : c.ink,
+              fontStyle: text == null ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+          Text(
+            r.reporterName?.isNotEmpty == true
+                ? 'Пожаловался: ${r.reporterName}'
+                : 'Пожаловался гость',
+            style: TextStyle(fontSize: 11, color: c.gray),
+          ),
+
+          if (!r.isNew) ...[
+            const SizedBox(height: 6),
+            Text('Статус: ${_statusLabel(r.status)}',
+                style: TextStyle(fontSize: 11, color: c.faint)),
+          ],
+
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton(
+                onPressed: _busy || text == null ? null : _confirmDelete,
+                style: FilledButton.styleFrom(backgroundColor: c.red),
+                child: const Text('Удалить отзыв'),
+              ),
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(
+                          () => ref
+                              .read(adminRepositoryProvider)
+                              .setReportStatus(r.id, 'rejected'),
+                          'Жалоба отклонена',
+                        ),
+                child: const Text('Не нарушает'),
+              ),
+              if (r.isNew)
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => _run(
+                            () => ref
+                                .read(adminRepositoryProvider)
+                                .setReportStatus(r.id, 'reviewed'),
+                            'Помечено как разобранное',
+                          ),
+                  child: const Text('Разобрано'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _statusLabel(String s) => switch (s) {
+        'removed' => 'отзыв удалён',
+        'rejected' => 'нарушений нет',
+        'reviewed' => 'разобрано',
+        _ => s,
+      };
 }
