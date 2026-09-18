@@ -4,22 +4,31 @@ name: Миграция базы
 # Применяет один файл из supabase/migrations к живой базе.
 #
 # Зачем: раньше каждую миграцию приходилось открывать и вручную вставлять
-# в SQL Editor. Теперь достаточно нажать «Run workflow» и выбрать файл —
-# GitHub Actions применит его сам.
+# в SQL Editor. Теперь достаточно запустить этот workflow и выбрать файл.
 #
-# Что нужно настроить ОДИН РАЗ:
+# ЧТО НУЖНО НАСТРОИТЬ ОДИН РАЗ — достаточно ОДНОГО секрета:
+#
 #   Settings → Secrets and variables → Actions → New repository secret
-#     имя:      SUPABASE_DB_URL
-#     значение: строка подключения из Supabase → Project Settings →
-#               Database → Connection string → URI (вкладка Session pooler),
-#               с подставленным вместо [YOUR-PASSWORD] паролем базы.
+#     имя:      SUPABASE_DB_PASSWORD
+#     значение: пароль базы данных (тот, что задавали при создании проекта;
+#               сбросить можно в Supabase → Connect → там же есть ссылка)
 #
-# ВНИМАНИЕ: эта строка даёт полный доступ к базе. Она хранится в секретах
-# GitHub и в логи не попадает, но обращаться с ней нужно как с паролем —
-# не вставлять в переписку, не коммитить в репозиторий.
+# Хост пулера и имя пользователя workflow соберёт сам из идентификатора
+# проекта и региона — искать нужную строку подключения среди вкладок
+# дашборда не нужно.
 #
-# Запуск: вкладка Actions → «Миграция базы» → Run workflow → вписать имя
-# файла, например 0024_app_events.sql
+# Если по какой-то причине нужен нестандартный адрес, можно вместо этого
+# задать секрет SUPABASE_DB_URL с полной строкой подключения — он имеет
+# приоритет. Тогда берите строку через кнопку Connect → Direct, вариант,
+# где хост содержит pooler.supabase.com и порт 5432.
+#
+# Идентификатор проекта и регион не секретны (ref виден в адресе API и
+# в самом приложении). Если проект переедет, их можно переопределить
+# переменными репозитория SUPABASE_PROJECT_REF и SUPABASE_REGION —
+# Settings → Secrets and variables → Actions → вкладка Variables.
+#
+# Запуск: вкладка Actions → «Миграция базы» → Run workflow → имя файла,
+# например 0024_app_events.sql
 # ─────────────────────────────────────────────────────────────────────────
 
 on:
@@ -71,23 +80,79 @@ jobs:
           psql --version
 
       - name: Применить миграцию
+        # Всё в одном шаге намеренно: пароль и строка подключения не выходят
+        # за его пределы и не попадают ни в GITHUB_ENV, ни в логи.
         env:
           MIGRATION_FILE: ${{ inputs.file }}
-          PGCONN: ${{ secrets.SUPABASE_DB_URL }}
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          PROJECT_REGION: ${{ vars.SUPABASE_REGION }}
         run: |
           set -euo pipefail
-          if [ -z "$PGCONN" ]; then
-            echo "::error::Не задан секрет SUPABASE_DB_URL — см. комментарий вверху файла"
-            exit 1
+
+          FILE="supabase/migrations/$MIGRATION_FILE"
+
+          # Вариант 1: задана готовая строка подключения — используем как есть.
+          # psql идёт одной транзакцией: при ошибке не остаётся наполовину
+          # применённой миграции. Если когда-нибудь появится команда, которую
+          # нельзя выполнить в транзакции (например CREATE INDEX CONCURRENTLY),
+          # для неё этот флаг придётся убрать.
+          if [ -n "${DB_URL:-}" ]; then
+            echo "Подключение: по строке из секрета SUPABASE_DB_URL"
+            psql "$DB_URL" \
+              --single-transaction \
+              --set ON_ERROR_STOP=1 \
+              --file "$FILE"
+            echo "### Миграция применена: \`$MIGRATION_FILE\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
 
-          # --single-transaction: при ошибке ничего не остаётся применённым
-          # наполовину. Если когда-нибудь появится миграция с командой,
-          # которую нельзя выполнить в транзакции (например CREATE INDEX
-          # CONCURRENTLY), этот флаг для неё придётся убрать.
-          psql "$PGCONN" \
+          # Вариант 2: задан только пароль — адрес собираем сами.
+          if [ -z "${DB_PASSWORD:-}" ]; then
+            echo "::error::Нужен секрет SUPABASE_DB_PASSWORD (или SUPABASE_DB_URL). См. комментарий вверху файла."
+            exit 1
+          fi
+          echo "::add-mask::$DB_PASSWORD"
+
+          REF="${PROJECT_REF:-xncupkiiuhpcsficvnbr}"
+          REGION="${PROJECT_REGION:-ap-northeast-2}"
+
+          # Подключаемся только через пулер: прямой хост db.<ref>.supabase.co
+          # отвечает лишь по IPv6, которого у раннеров GitHub нет. Префикс
+          # пулера у разных проектов отличается, поэтому перебираем известные
+          # и берём первый, который отзывается.
+          HOST=""
+          for PREFIX in aws-0 aws-1; do
+            CANDIDATE="$PREFIX-$REGION.pooler.supabase.com"
+            set +e
+            pg_isready -h "$CANDIDATE" -p 5432 -t 5 >/dev/null 2>&1
+            RC=$?
+            set -e
+            # 0 — принимает соединения, 1 — отвечает, но отклоняет.
+            # В обоих случаях хост существует и доступен.
+            if [ "$RC" -eq 0 ] || [ "$RC" -eq 1 ]; then
+              HOST="$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -z "$HOST" ]; then
+            echo "::error::Не удалось найти адрес пулера для региона $REGION."
+            echo "::error::Задайте переменную SUPABASE_REGION или секрет SUPABASE_DB_URL со строкой подключения."
+            exit 1
+          fi
+          echo "Подключение: $HOST (пользователь postgres.$REF)"
+
+          # Пароль передаём через PGPASSWORD, а не в составе URL: иначе его
+          # пришлось бы URL-кодировать, и спецсимволы ломали бы подключение.
+          PGPASSWORD="$DB_PASSWORD" psql \
+            --host="$HOST" \
+            --port=5432 \
+            --username="postgres.$REF" \
+            --dbname=postgres \
             --single-transaction \
             --set ON_ERROR_STOP=1 \
-            --file "supabase/migrations/$MIGRATION_FILE"
+            --file "$FILE"
 
           echo "### Миграция применена: \`$MIGRATION_FILE\`" >> "$GITHUB_STEP_SUMMARY"
