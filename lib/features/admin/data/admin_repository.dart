@@ -38,6 +38,40 @@ class SubRequest {
   bool get forSupplier => kind == 'supplier';
 }
 
+/// Жалоба на отзыв (таблица content_reports, миграция 0025).
+class ContentReport {
+  const ContentReport({
+    required this.id,
+    required this.target,
+    required this.reviewId,
+    required this.status,
+    required this.createdAt,
+    this.reviewText,
+    this.reporterName,
+  });
+
+  final int id;
+
+  /// `product_review` или `supplier_review` — в какой таблице искать отзыв.
+  final String target;
+
+  /// Текстом, потому что у отзывов о товарах id типа uuid, а о поставщиках —
+  /// bigint (см. миграцию 0025).
+  final String reviewId;
+
+  final String status; // new | reviewed | removed | rejected
+  final DateTime createdAt;
+
+  /// Текст отзыва, на который пожаловались. Может не подтянуться, если отзыв
+  /// уже удалён — тогда жалобу всё равно показываем, просто без текста.
+  final String? reviewText;
+
+  final String? reporterName;
+
+  bool get isNew => status == 'new';
+  bool get onSupplier => target == 'supplier_review';
+}
+
 /// Всё, что администратор делает с заявками. Права проверяет база:
 /// без role = 'admin' политики просто ничего не отдадут.
 class AdminRepository {
@@ -211,6 +245,116 @@ class AdminRepository {
           .update({'status': status}).eq('id', orderId);
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось изменить статус');
+    }
+  }
+
+  /// Жалобы на отзывы — самые свежие сверху.
+  Future<List<ContentReport>> reports() async {
+    try {
+      final rows = await supabase
+          .from('content_reports')
+          .select('id,target,review_id,reporter_id,status,created_at')
+          .order('created_at', ascending: false)
+          .limit(200);
+      if (rows.isEmpty) return const [];
+
+      // Тексты отзывов и имена подтягиваем отдельными запросами: внешнего
+      // ключа у жалобы нет, потому что она указывает на одну из двух таблиц.
+      final texts = <String, String>{};
+      await _fillReviewTexts(rows, 'product_review', 'reviews', texts);
+      await _fillReviewTexts(rows, 'supplier_review', 'supplier_reviews', texts);
+
+      final names = <String, String>{};
+      final reporterIds = {
+        for (final r in rows)
+          if (r['reporter_id'] != null) r['reporter_id'].toString(),
+      }.toList();
+      if (reporterIds.isNotEmpty) {
+        try {
+          final profiles = await supabase
+              .from('profiles')
+              .select('id,full_name')
+              .inFilter('id', reporterIds);
+          for (final p in profiles) {
+            names[p['id'].toString()] = (p['full_name'] as String?) ?? '';
+          }
+        } catch (_) {
+          // Имя не критично — жалобу нужно показать в любом случае.
+        }
+      }
+
+      return rows.map<ContentReport>((r) {
+        final target = r['target'] as String? ?? 'product_review';
+        final reviewId = r['review_id'].toString();
+        final reporter = r['reporter_id']?.toString();
+        return ContentReport(
+          id: (r['id'] as num).toInt(),
+          target: target,
+          reviewId: reviewId,
+          status: r['status'] as String? ?? 'new',
+          createdAt: DateTime.parse(r['created_at'] as String).toLocal(),
+          reviewText: texts['$target:$reviewId'],
+          reporterName: reporter == null ? null : names[reporter],
+        );
+      }).toList();
+    } catch (e) {
+      if (e.toString().contains('content_reports')) {
+        throw const Failure(
+            'Таблица жалоб ещё не создана — примените миграцию 0025');
+      }
+      throw mapError(e, fallback: 'Не удалось загрузить жалобы');
+    }
+  }
+
+  /// Подтягивает тексты отзывов одной таблицы в общий словарь.
+  /// Ключ — «цель:id», потому что идентификаторы из разных таблиц могут
+  /// совпасть: там uuid, тут просто числа.
+  Future<void> _fillReviewTexts(
+    List<dynamic> rows,
+    String target,
+    String table,
+    Map<String, String> into,
+  ) async {
+    final ids = [
+      for (final r in rows)
+        if (r['target'] == target) r['review_id'].toString(),
+    ];
+    if (ids.isEmpty) return;
+    try {
+      final found =
+          await supabase.from(table).select('id,text').inFilter('id', ids);
+      for (final f in found) {
+        into['$target:${f['id']}'] = (f['text'] as String?) ?? '';
+      }
+    } catch (_) {
+      // Отзыв мог быть уже удалён — не повод ронять весь список.
+    }
+  }
+
+  Future<void> setReportStatus(int reportId, String status) async {
+    try {
+      await supabase
+          .from('content_reports')
+          .update({'status': status}).eq('id', reportId);
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось изменить статус жалобы');
+    }
+  }
+
+  /// Удаляет отзыв и закрывает все жалобы на него. Через обычный запрос
+  /// это невозможно: политики дают право удалять только автору.
+  Future<void> deleteReview(ContentReport report) async {
+    try {
+      await supabase.rpc('admin_delete_review', params: {
+        'p_target': report.target,
+        'p_review_id': report.reviewId,
+      });
+    } catch (e) {
+      if (e.toString().contains('admin_delete_review')) {
+        throw const Failure(
+            'Функция ещё не создана — примените миграцию 0025');
+      }
+      throw mapError(e, fallback: 'Не удалось удалить отзыв');
     }
   }
 }

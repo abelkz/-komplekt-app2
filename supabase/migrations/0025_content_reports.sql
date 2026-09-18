@@ -84,3 +84,43 @@ comment on table public.content_reports is
   'Жалобы на отзывы (App Store Guideline 1.2). Разбираются администратором '
   'сменой статуса; review_id текстовый, потому что отзывы о товарах имеют '
   'uuid, а о поставщиках — bigint';
+
+-- ────────────────────────────────────────────────────────────────────────
+-- Удаление отзыва администратором.
+--
+-- Через клиент это невозможно: политики reviews и supplier_reviews дают
+-- право удалять только автору. Без такой функции экран разбора жалоб был бы
+-- бутафорией — статус меняется, а оскорбительный отзыв остаётся висеть.
+--
+-- Заодно закрывает все жалобы на этот отзыв, чтобы он не всплыл в списке
+-- второй раз.
+-- ────────────────────────────────────────────────────────────────────────
+create or replace function public.admin_delete_review(
+  p_target    text,
+  p_review_id text
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.profiles p
+                  where p.id = auth.uid() and p.role = 'admin') then
+    raise exception 'Доступно только администратору';
+  end if;
+
+  -- Тип идентификатора зависит от таблицы: uuid у отзывов о товарах,
+  -- bigint у отзывов о поставщиках.
+  if p_target = 'product_review' then
+    delete from public.reviews where id = p_review_id::uuid;
+  elsif p_target = 'supplier_review' then
+    delete from public.supplier_reviews where id = p_review_id::bigint;
+  else
+    raise exception 'Неизвестный тип отзыва: %', p_target;
+  end if;
+
+  update public.content_reports
+     set status = 'removed'
+   where target = p_target and review_id = p_review_id;
+end;
+$$;
+
+revoke all on function public.admin_delete_review(text, text) from public;
+grant execute on function public.admin_delete_review(text, text) to authenticated;
