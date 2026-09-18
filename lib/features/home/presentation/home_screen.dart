@@ -13,6 +13,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/category_icons.dart';
 import '../../catalog/domain/category.dart';
+import '../../catalog/domain/price_drop.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../notifications/presentation/notifications_providers.dart';
@@ -107,6 +108,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
     final city = ref.watch(settingsProvider.select((s) => s.city));
+    final drops = ref.watch(priceDropsProvider).valueOrNull ?? const [];
     final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
@@ -115,6 +117,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onRefresh: () async {
             ref.invalidate(feedProvider);
             ref.invalidate(categoriesProvider);
+            ref.invalidate(priceDropsProvider);
           },
           child: CustomScrollView(
             slivers: [
@@ -214,7 +217,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
 
               // ── Горячие предложения ──
-              // Здесь не «подешевело за неделю»: feedProvider сортирует по
+              // ── Подешевело за неделю ──
+              // Настоящее падение минимальной цены (RPC price_drops, 0027).
+              // Секции нет, пока нечего показать: «смотрите, подешевело» без
+              // снижений — враньё, а пустая полоса на главной хуже её
+              // отсутствия.
+              if (drops.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: _SectionHeader(
+                      title: 'Подешевело за неделю', tag: '−%'),
+                ),
+                SliverToBoxAdapter(child: _PriceDropsRow(drops: drops)),
+              ],
+
+              // Здесь не «подешевело»: feedProvider сортирует по
               // savingPercent — это разброс между самым дешёвым и самым
               // дорогим предложением на один товар, а не падение цены.
               // Называем тем, чем оно является.
@@ -497,6 +513,133 @@ class _HotDealsRow extends StatelessWidget {
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, i) => _HotDealCard(product: list[i]),
+      ),
+    );
+  }
+}
+
+/// Лента «Подешевело за неделю».
+class _PriceDropsRow extends StatelessWidget {
+  const _PriceDropsRow({required this.drops});
+  final List<PriceDrop> drops;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 210,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: drops.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (_, i) => _PriceDropCard(drop: drops[i]),
+        ),
+      );
+}
+
+/// Карточка снижения: старая цена зачёркнута, новая — акцентом, процент —
+/// зелёным. Зелёный здесь по делу: для покупателя падение цены — хорошая
+/// новость, красным его красить бессмысленно.
+class _PriceDropCard extends StatelessWidget {
+  const _PriceDropCard({required this.drop});
+  final PriceDrop drop;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final p = drop.product;
+    final url = p.primaryImageUrl;
+    final bg = p.placeholderColor ?? c.field;
+
+    return SizedBox(
+      width: 172,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(color: c.line),
+        ),
+        child: Material(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => context.push(Routes.product(p.id)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 104,
+                  width: double.infinity,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (url != null)
+                        CachedNetworkImage(
+                          imageUrl: url,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(color: bg),
+                          errorWidget: (_, __, ___) => Container(color: bg),
+                        )
+                      else
+                        Container(color: bg),
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: c.green,
+                            borderRadius: BorderRadius.circular(AppRadii.xs),
+                          ),
+                          child: Text('−${drop.percent} %',
+                              style: AppTypography.data(
+                                  color: AppColors.brandInk)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(height: 1, color: c.line),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodyMd(color: c.ink),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              Formatters.price(drop.newPrice),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.priceMd(color: c.accent),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            Formatters.price(drop.oldPrice),
+                            style: AppTypography.bodySm(color: c.faint)
+                                .copyWith(
+                                    decoration: TextDecoration.lineThrough),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
