@@ -63,12 +63,17 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 /// Вкладок «Избранное» и «Подборки» здесь нет намеренно: вместо переброса на
 /// вход они показывают предложение войти прямо на своём месте, не выбрасывая
 /// человека из вкладки (см. SignInRequired).
-bool _needsAccount(String location) =>
+/// Сравнение только точное. Был `startsWith('/pro')` — под него попадали
+/// `/product/:id` и `/profile`, то есть карточка товара и вкладка профиля
+/// считались платным разделом и гостя с них выбрасывало. Префиксы здесь
+/// опасны: пути приложения начинаются одинаково.
+@visibleForTesting
+bool needsAccount(String location) =>
     location == Routes.supplierCabinet ||
     location == Routes.supplierLocation ||
     location == Routes.notifications ||
     location == Routes.admin ||
-    location.startsWith('/pro');
+    location == '/pro';
 
 final routerProvider = Provider<GoRouter>((ref) {
   // Мост Riverpod -> Listenable: пересчитываем redirect при смене сессии/настроек
@@ -106,13 +111,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 2. Каталог, поиск, карта и карточки товаров открыты гостю: человек
       //    должен увидеть, что внутри, прежде чем его просят регистрироваться.
       //    Аккаунт спрашиваем только там, где без него нечего показать.
-      if (!signedIn && _needsAccount(loc)) {
+      if (!signedIn && needsAccount(loc)) {
         final from = Uri.encodeComponent(state.uri.toString());
         return '${Routes.auth}?from=$from';
       }
       // 3. Уже вошёл — не держим на онбординге/авторизации. Если пришли
       //    сюда за чем-то конкретным (from), возвращаем туда.
-      if (loc == Routes.auth) {
+      //
+      //    Проверка signedIn здесь обязательна: без неё редирект уводил с
+      //    /auth на /home и гостя тоже, то есть открыть вход было нельзя
+      //    вообще — ни кнопкой в «Избранном», ни из профиля.
+      if (signedIn && loc == Routes.auth) {
         final from = state.uri.queryParameters['from'];
         return (from == null || from.isEmpty)
             ? Routes.home
