@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/sign_in_required.dart';
 import '../../../core/widgets/skeletons.dart';
+import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/widgets/product_grid_card.dart';
 import 'favorites_providers.dart';
@@ -14,6 +16,20 @@ class FavoritesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Гостю показывать нечего: избранное хранится за аккаунтом.
+    if (!ref.watch(isSignedInProvider)) {
+      return const Scaffold(
+        body: SafeArea(
+          child: SignInRequired(
+            icon: Icons.favorite_border,
+            title: 'Избранное — после входа',
+            subtitle: 'Войдите, чтобы следить за ценой на нужные товары и '
+                'получать уведомления, когда они дешевеют.',
+          ),
+        ),
+      );
+    }
+
     final favs = ref.watch(favoriteProductsProvider);
 
     return Scaffold(

@@ -6,9 +6,11 @@
 #   2. Добавить App Store Connect API-ключ (интеграция) и назвать её ровно:
 #          komplekt_appstore
 #      (Codemagic → Teams/Settings → Integrations → App Store Connect).
-#   3. Создать группу переменных «supabase» с двумя значениями:
+#   3. Создать группу переменных «supabase» со значениями:
 #          SUPABASE_URL         — адрес проекта Supabase
 #          SUPABASE_ANON_KEY    — публичный anon-ключ
+#          SENTRY_DSN           — отчёты о падениях (необязательно: без него
+#                                 сборка идёт как раньше, просто без отчётов)
 #      (Codemagic → App settings → Environment variables, группа: supabase).
 #   4. В App Store Connect создать приложение с Bundle ID: kz.komplekt.app
 #
@@ -36,6 +38,7 @@ workflows:
             echo "SUPABASE_URL=$SUPABASE_URL"
             echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
             echo "DEMO_MODE=false"
+            echo "SENTRY_DSN=$SENTRY_DSN"
             echo "DEFAULT_CITY=Астана"
             echo "DEFAULT_LAT=51.1280"
             echo "DEFAULT_LNG=71.4304"
@@ -139,9 +142,14 @@ workflows:
           xcode-project use-profiles
 
       - name: Сборка .ipa
+        # Номер версии НЕ задаём флагом: Flutter берёт его из pubspec.yaml.
+        # Раньше здесь было вшито --build-name=1.0.0, и при выпуске новой
+        # версии про этот флаг легко забыть — App Store отклоняет загрузку
+        # с уже занятым номером. Теперь версия правится в одном месте.
+        # Номер сборки остаётся от Codemagic: он должен расти при каждой
+        # загрузке, даже если версия та же.
         script: |
           flutter build ipa --release \
-            --build-name=1.0.0 \
             --build-number=$(($BUILD_NUMBER)) \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:

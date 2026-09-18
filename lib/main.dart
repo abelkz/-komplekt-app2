@@ -1,12 +1,16 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/config/build_info.dart';
 import 'core/config/env.dart';
+import 'core/config/http_client.dart';
 import 'core/config/local_store.dart';
 import 'core/config/supabase_client.dart';
 import 'core/demo/demo_repositories.dart';
@@ -16,6 +20,7 @@ import 'core/providers/settings_provider.dart';
 import 'core/push/push_service.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/startup_error_app.dart';
 import 'features/auth/presentation/auth_providers.dart';
 import 'features/notifications/presentation/notifications_providers.dart';
 
@@ -31,23 +36,67 @@ Future<void> main() async {
   // 1. Читаем ключи из .env (никаких секретов в коде)
   await dotenv.load(fileName: '.env');
 
+  // 2. Отчёты о падениях. Без SENTRY_DSN приложение запускается как раньше —
+  //    просто без отправки ошибок. Пока мониторинга не было, о сбоях в
+  //    продакшене мы узнавали, только открыв приложение сами.
+  final dsn = Env.sentryDsn;
+  if (dsn == null) {
+    await _bootstrap();
+    return;
+  }
+
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = dsn;
+      // Нужны падения, а не профилирование производительности: трейсы
+      // быстро съедают бесплатную квоту и здесь ничего не дают.
+      options.tracesSampleRate = 0;
+      // По какой сборке пришла ошибка — тот же хеш, что виден в профиле.
+      options.release = BuildInfo.tag;
+      options.environment = kReleaseMode ? 'production' : 'debug';
+      // В отчёты не кладём email, телефон и IP: приложение работает с
+      // персональными данными, и утечка их в трекер никому не нужна.
+      options.sendDefaultPii = false;
+    },
+    appRunner: _bootstrap,
+  );
+}
+
+/// Собственно запуск: база, пуши, локальное хранилище, дерево виджетов.
+/// Вынесено из main(), чтобы Sentry мог обернуть запуск и ловить всё, что
+/// падает внутри, — и чтобы кнопка «Повторить» на экране ошибки перезапускала
+/// только эту часть, не инициализируя Sentry заново.
+Future<void> _bootstrap() async {
   final demo = Env.demoMode;
 
   if (!demo) {
-    // 2. Инициализируем Supabase (Auth + Postgres + Storage).
+    // Инициализируем Supabase (Auth + Postgres + Storage).
     // implicit-режим: ссылки из письма (сброс пароля) отдают токен прямо
     // в адресе и работают на вебе без code_verifier, который терялся при
     // очистке кэша/другой вкладке (в PKCE смена пароля падала).
-    await Supabase.initialize(
-      url: Env.supabaseUrl,
-      anonKey: Env.supabaseAnonKey,
-      authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.implicit,
-      ),
-    );
+    //
+    // Падение здесь раньше валило весь запуск: исключение вылетало из main()
+    // до runApp, и вместо приложения оставался чёрный экран. Теперь сбой
+    // показываем экраном с кнопкой «Повторить».
+    try {
+      await Supabase.initialize(
+        url: Env.supabaseUrl,
+        anonKey: Env.supabaseAnonKey,
+        // Таймаут на каждый запрос: иначе молчащий сервер оставляет
+        // приложение в вечной загрузке вместо понятной ошибки.
+        httpClient: TimeoutHttpClient(),
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.implicit,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Supabase не поднялся: $e');
+      runApp(StartupErrorApp(onRetry: _bootstrap, details: e.toString()));
+      return;
+    }
 
-    // 3. Пуши (FCM) — лучшая попытка: без настройки Firebase приложение
-    //    работает как обычно, просто без уведомлений.
+    // Пуши (FCM) — лучшая попытка: без настройки Firebase приложение
+    // работает как обычно, просто без уведомлений.
     try {
       await Firebase.initializeApp();
       await PushService.init();
@@ -58,7 +107,7 @@ Future<void> main() async {
     debugPrint('ДЕМО-РЕЖИМ: встроенные данные, без Supabase/Firebase.');
   }
 
-  // 4. Локальное хранилище (тема, город, недавние поиски)
+  // Локальное хранилище (тема, город, недавние поиски)
   final store = await LocalStore.create();
 
   runApp(

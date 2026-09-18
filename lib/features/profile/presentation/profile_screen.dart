@@ -12,6 +12,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/launchers.dart';
+import '../../../core/widgets/sign_in_required.dart';
 import '../../admin/presentation/admin_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/presentation/catalog_providers.dart';
@@ -24,6 +25,13 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
+
+    // Гость: аккаунта нет, показывать нечего кроме предложения войти и
+    // тех настроек, что живут на устройстве (город и тема).
+    if (!ref.watch(isSignedInProvider)) {
+      return _guestView(context, ref);
+    }
+
     final profile = ref.watch(myProfileProvider);
     final settings = ref.watch(settingsProvider);
     final favCount = ref.watch(favoriteIdsProvider).valueOrNull?.length ?? 0;
@@ -487,6 +495,58 @@ class ProfileScreen extends ConsumerWidget {
             child: const Text('Удалить'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Профиль гостя: предложение войти плюс настройки, которые хранятся на
+  /// устройстве и работают без аккаунта — город и тема.
+  Widget _guestView(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final settings = ref.watch(settingsProvider);
+
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          children: [
+            Text('Профиль', style: AppTypography.unbounded()),
+            const SizedBox(height: 14),
+            const SignInRequired(
+              icon: Icons.person_outline_rounded,
+              title: 'Вы не вошли',
+              subtitle: 'Каталог и цены доступны без регистрации. Аккаунт '
+                  'нужен для избранного, подборок и кабинета поставщика.',
+            ),
+            const SizedBox(height: 22),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              child: Text('НАСТРОЙКИ',
+                  style: AppTypography.sectionLabel(color: c.faint)),
+            ),
+            _MenuCard(items: [
+              _MenuItemData('Сменить город', settings.city,
+                  icon: Icons.location_on_outlined,
+                  onTap: () => _cityDialog(context, ref)),
+              _MenuItemData(
+                'Тёмная тема',
+                settings.themeMode == ThemeMode.dark ? 'вкл' : 'выкл',
+                icon: Icons.dark_mode_outlined,
+                trailing: Switch(
+                  value: settings.themeMode == ThemeMode.dark,
+                  activeColor: c.orange,
+                  onChanged: (_) =>
+                      ref.read(settingsProvider.notifier).toggleTheme(),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 26),
+            Center(
+              child: Text(BuildInfo.label,
+                  style: TextStyle(fontSize: 11, color: c.faint)),
+            ),
+          ],
+        ),
       ),
     );
   }

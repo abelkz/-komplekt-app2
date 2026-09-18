@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/analytics/analytics.dart';
 import '../../../core/config/env.dart';
 import '../../../core/config/supabase_client.dart';
 import '../../../core/providers/providers.dart';
@@ -15,6 +16,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/category_icons.dart';
+import '../../../core/widgets/sign_in_required.dart';
+import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/offer.dart';
 import '../../catalog/domain/product.dart';
 import '../../collections/presentation/collections_providers.dart';
@@ -90,6 +93,13 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
       if (p != null && !_viewLogged) {
         _viewLogged = true;
         ref.read(eventsRepositoryProvider).logView(p);
+        // Статистика поставщика считает просмотры по каждому его предложению,
+        // а это — событие продукта: какие товары вообще открывают.
+        Analytics.log(Analytics.productView, {
+          'product_id': p.id,
+          'category': p.categorySlug,
+          'offers': p.offers.length,
+        });
       }
     });
     final isFav = ref.watch(favoriteIdsProvider
@@ -120,6 +130,12 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
               color: isFav ? c.orange : c.ink,
             ),
             onPressed: () async {
+              // Избранное живёт за аккаунтом — гостю предлагаем войти,
+              // а не показываем невнятную ошибку сохранения.
+              if (!ref.read(isSignedInProvider)) {
+                promptSignIn(context, 'Войдите, чтобы следить за ценой');
+                return;
+              }
               try {
                 await ref.read(favoriteIdsProvider.notifier).toggle(productId);
               } catch (_) {
@@ -377,6 +393,9 @@ class _OfferCard extends ConsumerWidget {
     // фиксируем обращение к поставщику + запускаем нужное действие
     void contact(Future<bool> Function() launch) {
       ref.read(eventsRepositoryProvider).logContact(productId, offer.supplierId);
+      // Обращение к поставщику — целевое действие приложения: по нему меряем,
+      // доходит ли человек от поиска до звонка.
+      Analytics.log(Analytics.contactSupplier, {'product_id': productId});
       launch();
     }
     final barWidth = (100 - diff * 4).clamp(8, 100) / 100;
@@ -570,6 +589,11 @@ class _AddToCollectionBar extends ConsumerWidget {
                 ? (inCollection ? 'В подборках — изменить' : 'Выбрать подборку')
                 : (inCollection ? 'В комплекте' : 'В комплект +')),
             onPressed: () async {
+              // Подборки привязаны к аккаунту — сначала вход.
+              if (!ref.read(isSignedInProvider)) {
+                promptSignIn(context, 'Войдите, чтобы собрать комплект');
+                return;
+              }
               if (needPicker) {
                 await showCollectionPicker(context, ref, product.id);
                 return;
@@ -626,6 +650,7 @@ class _ContactButtons extends ConsumerWidget {
     final c = context.colors;
     void contact(Future<bool> Function() launch) {
       ref.read(eventsRepositoryProvider).logContact(product.id, offer.supplierId);
+      Analytics.log(Analytics.contactSupplier, {'product_id': product.id});
       launch();
     }
 
