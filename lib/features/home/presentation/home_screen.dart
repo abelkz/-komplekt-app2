@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/analytics/analytics.dart';
 import '../../../core/onboarding/feature_tour.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
@@ -15,6 +16,13 @@ import '../../catalog/domain/category.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../notifications/presentation/notifications_providers.dart';
+
+/// Переход в категорию из любого места главной. Заодно пишем событие:
+/// по нему видно, какие разделы открывают, а какие лежат мёртвым грузом.
+void _openCategory(BuildContext context, Category category) {
+  Analytics.log(Analytics.categoryOpen, {'slug': category.slug});
+  context.push(Routes.catalog(category.slug), extra: category.name);
+}
 
 /// Экран 3 — Главная: поиск, bento-категории, горячие предложения.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -77,6 +85,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final q = (value ?? _search.text).trim();
     if (q.isEmpty) return;
     ref.read(recentSearchesProvider.notifier).add(q);
+    // Что ищут — главный вопрос к каталогу: по этим запросам видно, каких
+    // материалов и поставщиков не хватает.
+    Analytics.log(Analytics.search, {'query': q});
     context.push('${Routes.search}?q=${Uri.encodeComponent(q)}');
   }
 
@@ -344,8 +355,7 @@ class _FeaturedCategoryTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       color: c.card,
       child: InkWell(
-        onTap: () => context.push(Routes.catalog(category.slug),
-            extra: category.name),
+        onTap: () => _openCategory(context, category),
         child: Container(
           height: 150,
           decoration: BoxDecoration(
@@ -424,8 +434,7 @@ class _CategoryTileSmall extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadii.md),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => context.push(Routes.catalog(category.slug),
-            extra: category.name),
+        onTap: () => _openCategory(context, category),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(

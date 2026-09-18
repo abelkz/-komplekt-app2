@@ -6,9 +6,11 @@
 #   2. Добавить App Store Connect API-ключ (интеграция) и назвать её ровно:
 #          komplekt_appstore
 #      (Codemagic → Teams/Settings → Integrations → App Store Connect).
-#   3. Создать группу переменных «supabase» с двумя значениями:
+#   3. Создать группу переменных «supabase» со значениями:
 #          SUPABASE_URL         — адрес проекта Supabase
 #          SUPABASE_ANON_KEY    — публичный anon-ключ
+#          SENTRY_DSN           — отчёты о падениях (необязательно: без него
+#                                 сборка идёт как раньше, просто без отчётов)
 #      (Codemagic → App settings → Environment variables, группа: supabase).
 #   4. В App Store Connect создать приложение с Bundle ID: kz.komplekt.app
 #
@@ -36,6 +38,7 @@ workflows:
             echo "SUPABASE_URL=$SUPABASE_URL"
             echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
             echo "DEMO_MODE=false"
+            echo "SENTRY_DSN=$SENTRY_DSN"
             echo "DEFAULT_CITY=Астана"
             echo "DEFAULT_LAT=51.1280"
             echo "DEFAULT_LNG=71.4304"

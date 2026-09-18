@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/analytics/analytics.dart';
 import '../../../core/config/env.dart';
 import '../../../core/config/supabase_client.dart';
 import '../../../core/providers/providers.dart';
@@ -92,6 +93,13 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
       if (p != null && !_viewLogged) {
         _viewLogged = true;
         ref.read(eventsRepositoryProvider).logView(p);
+        // Статистика поставщика считает просмотры по каждому его предложению,
+        // а это — событие продукта: какие товары вообще открывают.
+        Analytics.log(Analytics.productView, {
+          'product_id': p.id,
+          'category': p.categorySlug,
+          'offers': p.offers.length,
+        });
       }
     });
     final isFav = ref.watch(favoriteIdsProvider
@@ -385,6 +393,9 @@ class _OfferCard extends ConsumerWidget {
     // фиксируем обращение к поставщику + запускаем нужное действие
     void contact(Future<bool> Function() launch) {
       ref.read(eventsRepositoryProvider).logContact(productId, offer.supplierId);
+      // Обращение к поставщику — целевое действие приложения: по нему меряем,
+      // доходит ли человек от поиска до звонка.
+      Analytics.log(Analytics.contactSupplier, {'product_id': productId});
       launch();
     }
     final barWidth = (100 - diff * 4).clamp(8, 100) / 100;
@@ -639,6 +650,7 @@ class _ContactButtons extends ConsumerWidget {
     final c = context.colors;
     void contact(Future<bool> Function() launch) {
       ref.read(eventsRepositoryProvider).logContact(product.id, offer.supplierId);
+      Analytics.log(Analytics.contactSupplier, {'product_id': product.id});
       launch();
     }
 

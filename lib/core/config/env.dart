@@ -8,6 +8,15 @@ class Env {
   static String get supabaseUrl => _require('SUPABASE_URL');
   static String get supabaseAnonKey => _require('SUPABASE_ANON_KEY');
 
+  /// Адрес проекта Sentry для отчётов о падениях. Не задан — отчёты просто
+  /// не отправляются, приложение работает как раньше (так же ведём себя с
+  /// Firebase). Ключ публичный по своей природе: он лишь разрешает слать
+  /// события, читать их без доступа к проекту нельзя.
+  static String? get sentryDsn {
+    final dsn = dotenv.maybeGet('SENTRY_DSN');
+    return (dsn == null || dsn.isEmpty) ? null : dsn;
+  }
+
   static String get defaultCity => dotenv.maybeGet('DEFAULT_CITY') ?? 'Астана';
 
   static double get defaultLat =>
