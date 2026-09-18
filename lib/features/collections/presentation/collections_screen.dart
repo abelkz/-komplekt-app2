@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/sign_in_required.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/offer.dart';
 import '../../catalog/domain/product.dart';
@@ -24,6 +25,20 @@ class CollectionsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Подборки привязаны к аккаунту — гостю предлагаем войти.
+    if (!ref.watch(isSignedInProvider)) {
+      return const Scaffold(
+        body: SafeArea(
+          child: SignInRequired(
+            icon: Icons.layers_outlined,
+            title: 'Подборки — после входа',
+            subtitle: 'Войдите, чтобы собирать материалы по объектам и '
+                'выгружать смету в Excel или PDF.',
+          ),
+        ),
+      );
+    }
+
     final collections = ref.watch(collectionsProvider);
 
     return Scaffold(

@@ -8,6 +8,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/category_icons.dart';
+import '../../../../core/widgets/sign_in_required.dart';
+import '../../../auth/presentation/auth_providers.dart';
 import '../../../favorites/presentation/favorites_providers.dart';
 import '../../domain/product.dart';
 
@@ -101,8 +103,18 @@ class ProductGridCard extends ConsumerWidget {
                     right: 8,
                     child: _HeartButton(
                       active: isFav,
-                      onTap: () =>
-                          ref.read(favoriteIdsProvider.notifier).toggle(product.id),
+                      onTap: () {
+                        // Каталог гость смотрит свободно, но избранное
+                        // хранится за аккаунтом.
+                        if (!ref.read(isSignedInProvider)) {
+                          promptSignIn(
+                              context, 'Войдите, чтобы следить за ценой');
+                          return;
+                        }
+                        ref
+                            .read(favoriteIdsProvider.notifier)
+                            .toggle(product.id);
+                      },
                     ),
                   ),
                 ],

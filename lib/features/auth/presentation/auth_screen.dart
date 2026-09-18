@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 
 import '../../../core/providers/settings_provider.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/phone_input.dart';
 import '../../../core/theme/app_typography.dart';
@@ -60,10 +62,30 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('КОМПЛЕКТ', style: AppTypography.unbounded(size: 24)),
-                    const SizedBox(height: 6),
-                    Text('Вход в приложение',
-                        style: TextStyle(color: c.gray, fontSize: 13)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('КОМПЛЕКТ',
+                                  style: AppTypography.unbounded(size: 24)),
+                              const SizedBox(height: 6),
+                              Text('Вход в приложение',
+                                  style:
+                                      TextStyle(color: c.gray, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        // Выход из экрана входа: сюда попадают и редиректом с
+                        // закрытых разделов, и кнопкой «Войти». Без этого
+                        // гость оказывался заперт на форме регистрации.
+                        TextButton(
+                          onPressed: () => context.go(Routes.home),
+                          child: const Text('Каталог'),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 22),
 
                     // Способ входа: email / телефон

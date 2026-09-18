@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/moderation/review_moderation.dart';
 import '../../../../core/providers/providers.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/sign_in_required.dart';
+import '../../../auth/presentation/auth_providers.dart';
 import '../../domain/review.dart';
 import '../product_providers.dart';
 
@@ -31,7 +33,10 @@ class ReviewsSection extends ConsumerWidget {
                     color: c.faint)),
             const Spacer(),
             TextButton.icon(
-              onPressed: () => _openForm(context, ref),
+              // Отзыв подписан автором — без аккаунта его оставить нельзя.
+              onPressed: () => ref.read(isSignedInProvider)
+                  ? _openForm(context, ref)
+                  : promptSignIn(context, 'Войдите, чтобы оставить отзыв'),
               icon: const Icon(Icons.rate_review_outlined, size: 18),
               label: const Text('Оставить'),
             ),

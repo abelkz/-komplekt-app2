@@ -15,6 +15,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/category_icons.dart';
+import '../../../core/widgets/sign_in_required.dart';
+import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/offer.dart';
 import '../../catalog/domain/product.dart';
 import '../../collections/presentation/collections_providers.dart';
@@ -120,6 +122,12 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
               color: isFav ? c.orange : c.ink,
             ),
             onPressed: () async {
+              // Избранное живёт за аккаунтом — гостю предлагаем войти,
+              // а не показываем невнятную ошибку сохранения.
+              if (!ref.read(isSignedInProvider)) {
+                promptSignIn(context, 'Войдите, чтобы следить за ценой');
+                return;
+              }
               try {
                 await ref.read(favoriteIdsProvider.notifier).toggle(productId);
               } catch (_) {
@@ -570,6 +578,11 @@ class _AddToCollectionBar extends ConsumerWidget {
                 ? (inCollection ? 'В подборках — изменить' : 'Выбрать подборку')
                 : (inCollection ? 'В комплекте' : 'В комплект +')),
             onPressed: () async {
+              // Подборки привязаны к аккаунту — сначала вход.
+              if (!ref.read(isSignedInProvider)) {
+                promptSignIn(context, 'Войдите, чтобы собрать комплект');
+                return;
+              }
               if (needPicker) {
                 await showCollectionPicker(context, ref, product.id);
                 return;

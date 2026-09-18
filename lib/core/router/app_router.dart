@@ -56,6 +56,20 @@ class Routes {
 /// Ключ корневого навигатора — используется и для навигации из пушей.
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
+/// Маршруты, которым обязательно нужен аккаунт: личный кабинет, уведомления,
+/// оплата, админка. Всё остальное — каталог, поиск, карта, карточки товаров и
+/// витрины поставщиков — гость смотрит свободно.
+///
+/// Вкладок «Избранное» и «Подборки» здесь нет намеренно: вместо переброса на
+/// вход они показывают предложение войти прямо на своём месте, не выбрасывая
+/// человека из вкладки (см. SignInRequired).
+bool _needsAccount(String location) =>
+    location == Routes.supplierCabinet ||
+    location == Routes.supplierLocation ||
+    location == Routes.notifications ||
+    location == Routes.admin ||
+    location.startsWith('/pro');
+
 final routerProvider = Provider<GoRouter>((ref) {
   // Мост Riverpod -> Listenable: пересчитываем redirect при смене сессии/настроек
   final refresh = ValueNotifier(0);
@@ -89,12 +103,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!settings.onboardingDone) {
         return loc == Routes.onboarding ? null : Routes.onboarding;
       }
-      // 2. Затем авторизация
-      if (!signedIn) {
-        return loc == Routes.auth ? null : Routes.auth;
+      // 2. Каталог, поиск, карта и карточки товаров открыты гостю: человек
+      //    должен увидеть, что внутри, прежде чем его просят регистрироваться.
+      //    Аккаунт спрашиваем только там, где без него нечего показать.
+      if (!signedIn && _needsAccount(loc)) {
+        final from = Uri.encodeComponent(state.uri.toString());
+        return '${Routes.auth}?from=$from';
       }
-      // 3. Уже вошёл — не держим на онбординге/авторизации
-      if (loc == Routes.onboarding || loc == Routes.auth) return Routes.home;
+      // 3. Уже вошёл — не держим на онбординге/авторизации. Если пришли
+      //    сюда за чем-то конкретным (from), возвращаем туда.
+      if (loc == Routes.auth) {
+        final from = state.uri.queryParameters['from'];
+        return (from == null || from.isEmpty)
+            ? Routes.home
+            : Uri.decodeComponent(from);
+      }
+      if (loc == Routes.onboarding) return Routes.home;
       return null;
     },
     routes: [
