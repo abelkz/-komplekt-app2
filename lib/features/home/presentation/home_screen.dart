@@ -107,7 +107,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final feed = ref.watch(feedProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
-    final city = ref.watch(settingsProvider.select((s) => s.city));
     final drops = ref.watch(priceDropsProvider).valueOrNull ?? const [];
     final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
@@ -180,8 +179,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
+                      // Город в подпись не подставляем: «поставщиков Астана»
+                      // — именительный падеж вместо родительного, и на
+                      // экране это выглядит как ошибка. Склонять названия
+                      // городов кодом — отдельная морока (Астаны, Алматы,
+                      // Шымкента), а выбранный город и так виден в профиле.
                       Text(
-                        'Цены поставщиков $city на один товар — рядом.',
+                        'Цены разных поставщиков на один товар — рядом.',
                         style: AppTypography.bodyMd(color: c.gray),
                       ),
                       const SizedBox(height: 4),
@@ -772,12 +776,16 @@ class _SectionHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
+          // 17 px, а не 18: на узком экране «Каталог спецификаций» вместе с
+          // числом разделов справа в 18 px не помещается и обрезается
+          // многоточием.
           Flexible(
             child: Text(
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.headlineSm(color: c.ink),
+              style: AppTypography.headlineSm(color: c.ink)
+                  .copyWith(fontSize: 17),
             ),
           ),
           if (tag != null) ...[
@@ -794,13 +802,17 @@ class _SectionHeader extends StatelessWidget {
             ),
           ],
           const Spacer(),
-          if (action != null)
+          if (action != null) ...[
+            const SizedBox(width: 8),
             GestureDetector(
               onTap: onAction,
               child: Text(action!,
+                  maxLines: 1,
                   style: AppTypography.sectionLabel(
-                      color: onAction == null ? c.faint : c.accent)),
+                          color: onAction == null ? c.faint : c.accent)
+                      .copyWith(fontSize: 10, letterSpacing: 0.8)),
             ),
+          ],
         ],
       ),
     );

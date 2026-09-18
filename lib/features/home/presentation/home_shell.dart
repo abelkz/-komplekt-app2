@@ -16,7 +16,11 @@ class HomeShell extends ConsumerWidget {
 
   final StatefulNavigationShell navigationShell;
 
-  static const _tabs = ['Поиск', 'Избранное', 'Коллекции', 'Профиль'];
+  // «Подборки», а не «Коллекции»: во всём остальном приложении — на экране
+  // подборок, в снекбарах, в предложении войти — они называются подборками.
+  // Разные слова для одного и того же в навигации и внутри экрана заставляют
+  // человека гадать, одно это или разное.
+  static const _tabs = ['Поиск', 'Избранное', 'Подборки', 'Профиль'];
   static const _icons = [
     Icons.search_rounded,
     Icons.favorite_rounded,
