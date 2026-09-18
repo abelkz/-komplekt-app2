@@ -181,24 +181,35 @@ class _CollectionBlock extends ConsumerWidget {
           for (final item in collection.items)
             _ItemRow(collectionId: collection.id, item: item),
           const SizedBox(height: 12),
-          // Итог: золотая карточка с крупной суммой по лучшим ценам
+          // Итог сметы. Жёлтой заливки больше нет: акцент в этой системе —
+          // сигнал, а не фон. Сумма набрана моноширинным акцентом, под ней
+          // сказано, из чего она сложилась, — подборка уходит заказчику,
+          // и цифра без объяснения вызывает вопросы.
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: c.orangeSoft,
-              borderRadius: BorderRadius.circular(AppRadii.lg),
-              border: Border.all(color: c.orange.withOpacity(0.35)),
+              color: c.card,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              border: Border.all(color: c.line),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text('ИТОГО ПО ЛУЧШИМ ЦЕНАМ',
-                      style: AppTypography.sectionLabel(color: c.orange)),
-                ),
-                const SizedBox(width: 10),
+                Text('ИТОГО ПО ПОДБОРКЕ',
+                    style: AppTypography.sectionLabel(color: c.faint)),
+                const SizedBox(height: 6),
                 Text(Formatters.priceOr(collection.total, fallback: '—'),
-                    style: AppTypography.unbounded(size: 24, color: c.ink)),
+                    style: AppTypography.priceLg(color: c.accent)),
+                if (_supplierCount(collection) > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'по минимальным ценам '
+                    '${_supplierCount(collection)} '
+                    '${_supplierPlural(_supplierCount(collection))}',
+                    style: AppTypography.bodySm(color: c.gray),
+                  ),
+                ],
               ],
             ),
           ),
@@ -370,6 +381,22 @@ class _CollectionBlock extends ConsumerWidget {
   }
 }
 
+/// Сколько разных поставщиков стоит за итогом.
+///
+/// Для сметы это не менее важно, чем сумма: «по минимальным ценам четырёх
+/// поставщиков» значит, что за материалами придётся объехать четыре адреса.
+/// Прораб должен видеть это до того, как покажет смету заказчику.
+int _supplierCount(Collection collection) => collection.items
+    .map((i) => i.product?.bestOffer?.supplierId)
+    .whereType<String>()
+    .toSet()
+    .length;
+
+/// «1 поставщика», «2 поставщиков» — вся фраза стоит в родительном падеже,
+/// поэтому множественное число одно на все числа, кроме единицы.
+String _supplierPlural(int n) =>
+    (n % 10 == 1 && n % 100 != 11) ? 'поставщика' : 'поставщиков';
+
 class _ItemRow extends ConsumerWidget {
   const _ItemRow({required this.collectionId, required this.item});
   final String collectionId;
@@ -474,8 +501,7 @@ class _ItemRow extends ConsumerWidget {
                       Text(p.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w700)),
+                          style: AppTypography.titleMd(color: c.ink)),
                       const SizedBox(height: 3),
                       Text(
                         // Нет предложений — вместо «0 ₸» честная подпись
@@ -483,7 +509,7 @@ class _ItemRow extends ConsumerWidget {
                             ? Formatters.priceUnset
                             : '${best.supplierName} · '
                                 '${Formatters.price(best.price)}/${p.unit}',
-                        style: TextStyle(fontSize: 11, color: c.faint),
+                        style: AppTypography.bodySm(color: c.faint),
                       ),
                     ],
                   ),
@@ -506,9 +532,11 @@ class _ItemRow extends ConsumerWidget {
                 onEdit: () => _editQty(context, notifier, p),
               ),
               const Spacer(),
+              // Сумма строки — моноширинным с табличными цифрами: суммы
+              // позиций выстраиваются в колонку и читаются как смета,
+              // а не как набор разрозненных чисел.
               Text(Formatters.priceOr(item.sum, fallback: '—'),
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800)),
+                  style: AppTypography.priceMd(color: c.ink)),
             ],
           ),
         ],
