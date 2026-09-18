@@ -179,28 +179,16 @@ class _ProductBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Блок «лучшая цена + тренд за месяц»
+              // Тренд цены за месяц. Самой цены здесь больше нет: она
+              // переехала в нижнюю панель, где видна на всей длине экрана,
+              // а метку «лучшее» теперь несёт строка в таблице цен —
+              // раньше одно и то же было написано трижды.
               if (best != null)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('ЛУЧШАЯ ЦЕНА',
-                              style:
-                                  AppTypography.sectionLabel(color: c.gray)),
-                          const SizedBox(height: 4),
-                          Text(Formatters.price(mn),
-                              style: AppTypography.unbounded(
-                                  size: 28, color: c.accent)),
-                        ],
-                      ),
-                    ),
-                    if (best.changePercent != null)
-                      _TrendPill(pct: best.changePercent!),
-                  ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: best.changePercent == null
+                      ? const SizedBox.shrink()
+                      : _TrendPill(pct: best.changePercent!),
                 )
               else
                 Container(
@@ -227,32 +215,10 @@ class _ProductBody extends StatelessWidget {
               // Характеристики (если есть что показать)
               _SpecsCard(product: product),
 
-              // Все предложения — шкала цен всех поставщиков
+              // Цены поставщиков — ради этого блока приложение и существует
               if (offers.isNotEmpty) ...[
                 const SizedBox(height: 22),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Text('ВСЕ ПРЕДЛОЖЕНИЯ — ${offers.length} ПОСТ.',
-                          style: AppTypography.sectionLabel(color: c.gray)),
-                    ),
-                    if (offers.length > 1)
-                      Text(
-                        'Δ ${Formatters.price(offers.last.price - mn)}',
-                        style: AppTypography.mono(size: 10, color: c.accent),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                for (int i = 0; i < offers.length; i++)
-                  _OfferCard(
-                    offer: offers[i],
-                    minPrice: mn,
-                    best: i == 0,
-                    productId: product.id,
-                    productName: product.name,
-                  ),
+                _PriceTable(product: product, offers: offers, minPrice: mn),
               ],
 
               const SizedBox(height: 8),
@@ -520,11 +486,137 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   }
 }
 
-class _OfferCard extends ConsumerWidget {
-  const _OfferCard({
+/// Ступень поверхности выше карточки — в макете это `surface-container-high`
+/// (#282A2A). Отдельного токена в палитре нет, поэтому подмешиваем текстовый
+/// цвет: работает и в тёмной теме, и в светлой, без новых полей в AppColors.
+Color _raised(AppColors c) =>
+    Color.alphaBlend(c.ink.withValues(alpha: 0.06), c.card);
+
+/// Таблица цен поставщиков — ядро карточки товара.
+///
+/// Раньше это был список карточек: у каждой своя рамка, своя полоска-индикатор
+/// и свои кнопки. Сравнивать так нельзя — цифры стоят на разных позициях, и
+/// глаз ищет минимум заново в каждой строке. Теперь это одна таблица с
+/// фиксированными колонками: цены выровнены по правому краю моноширинным
+/// шрифтом с табличными цифрами, разница с минимумом подписана в процентах.
+class _PriceTable extends StatelessWidget {
+  const _PriceTable({
+    required this.product,
+    required this.offers,
+    required this.minPrice,
+  });
+
+  final Product product;
+  final List<Offer> offers;
+  final double minPrice;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    // Самая свежая правка цены по всем предложениям: человеку важно знать,
+    // насколько таблица вообще актуальна.
+    final updated = offers
+        .map((o) => o.priceUpdatedAt)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            // Жёлтая засечка у заголовка — метка раздела из макета.
+            Container(
+              width: 3,
+              height: 12,
+              decoration: BoxDecoration(
+                color: c.accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('ЦЕНЫ ПОСТАВЩИКОВ',
+                  style: AppTypography.sectionLabel(color: c.ink)),
+            ),
+            if (updated != null)
+              Text('Обновлено ${Formatters.relativeDate(updated)}',
+                  style: AppTypography.data(color: c.faint)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            border: Border.all(color: c.line),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            child: Column(
+              children: [
+                const _PriceTableHeader(),
+                for (int i = 0; i < offers.length; i++) ...[
+                  if (i > 0) Divider(height: 1, thickness: 1, color: c.line),
+                  _PriceRow(
+                    offer: offers[i],
+                    minPrice: minPrice,
+                    best: i == 0,
+                    unit: product.unit,
+                    productId: product.id,
+                    productName: product.name,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Шапка таблицы. Колонки 5 / 3 / 3 / 2 — «НАЛИЧИЕ» и «Под заказ» по-русски
+/// длиннее английского, на двух долях они переносятся.
+class _PriceTableHeader extends StatelessWidget {
+  const _PriceTableHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final s = AppTypography.sectionLabel(color: c.faint).copyWith(fontSize: 10);
+
+    return Container(
+      color: _raised(c),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(flex: 5, child: Text('ПОСТАВЩИК', style: s)),
+          Expanded(
+            flex: 3,
+            child: Text('ЦЕНА', style: s, textAlign: TextAlign.right),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text('НАЛИЧИЕ', style: s, textAlign: TextAlign.center),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text('СВЯЗЬ', style: s, textAlign: TextAlign.right),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Строка таблицы: поставщик, цена, наличие, связь.
+class _PriceRow extends ConsumerWidget {
+  const _PriceRow({
     required this.offer,
     required this.minPrice,
     required this.best,
+    required this.unit,
     required this.productId,
     required this.productName,
   });
@@ -532,179 +624,221 @@ class _OfferCard extends ConsumerWidget {
   final Offer offer;
   final double minPrice;
   final bool best;
+  final String unit;
   final String productId;
   final String productName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final diff = minPrice == 0 ? 0 : ((offer.price - minPrice) / minPrice * 100).round();
+    final diff =
+        minPrice == 0 ? 0 : ((offer.price - minPrice) / minPrice * 100).round();
 
-    // фиксируем обращение к поставщику + запускаем нужное действие
+    // Фиксируем обращение к поставщику и запускаем действие. Это целевое
+    // действие приложения: по нему меряем, доходит ли человек от поиска
+    // до звонка.
     void contact(Future<bool> Function() launch) {
       ref.read(eventsRepositoryProvider).logContact(productId, offer.supplierId);
-      // Обращение к поставщику — целевое действие приложения: по нему меряем,
-      // доходит ли человек от поиска до звонка.
       Analytics.log(Analytics.contactSupplier, {'product_id': productId});
       launch();
     }
-    final barWidth = (100 - diff * 4).clamp(8, 100) / 100;
 
-    // Карточка предложения: у лучшего — золотая рамка, остальные — обычная.
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(15, 14, 12, 14),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(
-          color: best ? c.accent : c.line,
-          width: best ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      // Лучшее предложение выделено подложкой, а не рамкой: рамка внутри
+      // таблицы сдвигает содержимое строки и ломает выравнивание колонок.
+      color: best ? c.orangeSoft.withValues(alpha: 0.35) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            flex: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        // Имя ведёт в витрину поставщика: все его товары,
-                        // контакты, годы на рынке, отзывы.
-                        Flexible(
-                          child: GestureDetector(
-                            onTap: offer.supplierId == null
-                                ? null
-                                : () => context
-                                    .push(Routes.supplier(offer.supplierId!)),
-                            child: Text(offer.supplierName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    decoration: offer.supplierId == null
-                                        ? null
-                                        : TextDecoration.underline,
-                                    decorationColor: c.gray)),
-                          ),
+                    // Имя ведёт в витрину поставщика: все его товары,
+                    // контакты, годы на рынке, отзывы.
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: offer.supplierId == null
+                            ? null
+                            : () =>
+                                context.push(Routes.supplier(offer.supplierId!)),
+                        child: Text(
+                          offer.supplierName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.bodyMd(color: c.ink)
+                              .copyWith(fontWeight: FontWeight.w600),
                         ),
-                        // Проверенная компания. Значок про документы,
-                        // а не про оплату — и на порядок в шкале цен
-                        // он не влияет: выше стоит тот, у кого дешевле.
-                        if (offer.supplierVerified) ...[
-                          const SizedBox(width: 6),
-                          Icon(Icons.verified, size: 15, color: c.green),
-                        ],
-                        if (best) ...[
-                          const SizedBox(width: 7),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                                color: c.orange,
-                                borderRadius: BorderRadius.circular(6)),
-                            child: const Text('ЛУЧШАЯ ЦЕНА',
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.brandInk)),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${offer.city} · обновлено ${Formatters.relativeDate(offer.priceUpdatedAt)}',
-                      style: TextStyle(fontSize: 11, color: c.faint),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(Formatters.price(offer.price),
-                      style: AppTypography.unbounded(
-                          size: best ? 17 : 14,
-                          color: best ? c.accent : c.ink)),
-                  // Изменение относительно прежней цены этого поставщика
-                  if (offer.changePercent != null) ...[
-                    Text(
-                      offer.changePercent! < 0
-                          ? '▼ ${offer.changePercent!.abs()}% · было ${Formatters.price(offer.prevPrice!)}'
-                          : '▲ ${offer.changePercent}% · было ${Formatters.price(offer.prevPrice!)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: offer.changePercent! < 0 ? c.green : c.red,
                       ),
                     ),
+                    // Проверенная компания. Значок про документы, а не про
+                    // оплату: на порядок в таблице он не влияет — выше стоит
+                    // тот, у кого дешевле.
+                    if (offer.supplierVerified) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.verified, size: 13, color: c.green),
+                    ],
                   ],
-                  if (!best && diff > 0)
-                    Text('+$diff% к мин.',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: c.red,
-                            fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 11),
-          // Полоска относительной цены
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: barWidth.toDouble(),
-              minHeight: 5,
-              backgroundColor: c.field,
-              valueColor:
-                  AlwaysStoppedAnimation(best ? c.orange : c.line),
+                ),
+                const SizedBox(height: 4),
+                if (best)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: c.accent,
+                      borderRadius: BorderRadius.circular(AppRadii.xs),
+                    ),
+                    child: const Text(
+                      'ЛУЧШАЯ ЦЕНА',
+                      style: TextStyle(
+                        fontSize: 9,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: AppColors.brandInk,
+                      ),
+                    ),
+                  )
+                else if (diff > 0)
+                  Text('+$diff % к минимуму',
+                      style: AppTypography.data(color: c.faint))
+                else
+                  Text(
+                    offer.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySm(color: c.faint),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: offer.inStock
-                ? _StatusBadge('✓ в наличии', c.green, c.greenSoft)
-                : _StatusBadge('под заказ', c.red, c.redSoft),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(Formatters.price(offer.price),
+                    style:
+                        AppTypography.priceMd(color: best ? c.accent : c.ink)),
+                Text('за 1 $unit',
+                    style: AppTypography.bodySm(color: c.gray)),
+                // Своё изменение цены у этого поставщика — то, ради чего
+                // люди подписываются на товар.
+                if (offer.changePercent != null)
+                  Text(
+                    offer.changePercent! < 0
+                        ? '▼ ${offer.changePercent!.abs()} %'
+                        : '▲ ${offer.changePercent} %',
+                    style: AppTypography.data(
+                      color: offer.changePercent! < 0 ? c.green : c.red,
+                    ),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          // Кнопки связи — переносом, чтобы на узких экранах не вылезали
-          // за край (раньше был красный «overflow» и WhatsApp обрезался).
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (offer.phone != null)
-                _MiniButton(
-                  icon: Icons.call_outlined,
-                  label: 'Звонок',
-                  onTap: () => contact(() => Launchers.call(offer.phone!)),
+          Expanded(
+            flex: 3,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: offer.inStock ? c.green : c.faint,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              if (offer.whatsapp != null)
-                _MiniButton(
-                  icon: Icons.chat_outlined,
-                  label: 'WhatsApp',
-                  onTap: () => contact(() => Launchers.whatsapp(offer.whatsapp!,
-                      text: 'Здравствуйте! Интересует «$productName»')),
+                const SizedBox(height: 4),
+                Text(
+                  offer.inStock ? 'В наличии' : 'Под заказ',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bodySm(
+                      color: offer.inStock ? c.ink : c.faint),
                 ),
-              if (offer.website != null)
-                _MiniButton(
-                  icon: Icons.link_rounded,
-                  label: 'Сайт',
-                  onTap: () => contact(() => Launchers.website(offer.website!)),
-                ),
-            ],
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (offer.phone != null)
+                  _RowAction(
+                    icon: Icons.call_outlined,
+                    tooltip: 'Позвонить: ${offer.supplierName}',
+                    onTap: () => contact(() => Launchers.call(offer.phone!)),
+                  ),
+                if (offer.whatsapp != null) ...[
+                  if (offer.phone != null) const SizedBox(width: 6),
+                  _RowAction(
+                    icon: Icons.chat_outlined,
+                    tooltip: 'Написать в WhatsApp',
+                    onTap: () => contact(
+                      () => Launchers.whatsapp(
+                        offer.whatsapp!,
+                        text: 'Здравствуйте! Интересует «$productName»',
+                      ),
+                    ),
+                  ),
+                ],
+                // Сайт показываем только если звонить и писать некуда:
+                // в строке помещаются две кнопки, третья ломает вёрстку.
+                if (offer.phone == null &&
+                    offer.whatsapp == null &&
+                    offer.website != null)
+                  _RowAction(
+                    icon: Icons.link_rounded,
+                    tooltip: 'Сайт поставщика',
+                    onTap: () =>
+                        contact(() => Launchers.website(offer.website!)),
+                  ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Кнопка связи в строке таблицы: 28×28, чтобы не раздувать высоту строки.
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.xs),
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _raised(c),
+            borderRadius: BorderRadius.circular(AppRadii.xs),
+          ),
+          child: Icon(icon, size: 15, color: c.accent),
+        ),
       ),
     );
   }
@@ -723,42 +857,90 @@ class _AddToCollectionBar extends ConsumerWidget {
     final needPicker = cols.length > 1;
     final c = context.colors;
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: inCollection ? c.green : c.accent,
-              foregroundColor:
-                  inCollection ? Colors.white : AppColors.brandInk,
-            ),
-            icon: Icon(inCollection ? Icons.check : Icons.add, size: 20),
-            label: Text(needPicker
-                ? (inCollection ? 'В подборках — изменить' : 'Выбрать подборку')
-                : (inCollection ? 'В комплекте' : 'В комплект +')),
-            onPressed: () async {
-              // Подборки привязаны к аккаунту — сначала вход.
-              if (!ref.read(isSignedInProvider)) {
-                promptSignIn(context, 'Войдите, чтобы собрать комплект');
-                return;
-              }
-              if (needPicker) {
-                await showCollectionPicker(context, ref, product.id);
-                return;
-              }
-              try {
-                final name = await ref
-                    .read(collectionsProvider.notifier)
-                    .addToDefault(product.id);
-                if (context.mounted) _snack(context, 'Добавлено в «$name»');
-              } catch (_) {
-                if (context.mounted) {
-                  _snack(context, 'Не сохранилось — проверьте связь');
-                }
-              }
-            },
+    final mn = product.minPrice;
+
+    // Нижняя панель: слева минимальная цена, справа действие — как в макете.
+    // Цену подняли сюда из шапки экрана: там она дублировала метку
+    // «ЛУЧШАЯ ЦЕНА» в таблице, а здесь видна всегда, даже когда человек
+    // дочитал до отзывов.
+    return Container(
+      decoration: BoxDecoration(
+        color: c.paper,
+        border: Border(top: BorderSide(color: c.line)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Row(
+            children: [
+              if (mn != null) ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ',
+                        style: AppTypography.sectionLabel(color: c.faint)),
+                    const SizedBox(height: 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text('от ',
+                            style: AppTypography.bodySm(color: c.gray)),
+                        Text(Formatters.price(mn),
+                            style: AppTypography.priceLg(color: c.accent)),
+                        Text(' / ${product.unit}',
+                            style: AppTypography.bodySm(color: c.gray)),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: inCollection ? c.green : c.accent,
+                    foregroundColor:
+                        inCollection ? Colors.white : AppColors.brandInk,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  icon: Icon(inCollection ? Icons.check : Icons.add, size: 20),
+                  label: Text(
+                    needPicker
+                        ? (inCollection
+                            ? 'В подборках'
+                            : 'Выбрать подборку')
+                        : (inCollection ? 'В комплекте' : 'В комплект +'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: () async {
+                    // Подборки привязаны к аккаунту — сначала вход.
+                    if (!ref.read(isSignedInProvider)) {
+                      promptSignIn(context, 'Войдите, чтобы собрать комплект');
+                      return;
+                    }
+                    if (needPicker) {
+                      await showCollectionPicker(context, ref, product.id);
+                      return;
+                    }
+                    try {
+                      final name = await ref
+                          .read(collectionsProvider.notifier)
+                          .addToDefault(product.id);
+                      if (context.mounted) {
+                        _snack(context, 'Добавлено в «$name»');
+                      }
+                    } catch (_) {
+                      if (context.mounted) {
+                        _snack(context, 'Не сохранилось — проверьте связь');
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -937,56 +1119,6 @@ class _SpecsCard extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge(this.text, this.fg, this.bg);
-  final String text;
-  final Color fg;
-  final Color bg;
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
-      );
-}
-
-class _MiniButton extends StatelessWidget {
-  const _MiniButton(
-      {required this.icon, required this.label, required this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppRadii.sm),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: c.paper,
-          borderRadius: BorderRadius.circular(AppRadii.sm),
-          border: Border.all(color: c.line),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 15, color: c.orange),
-            const SizedBox(width: 5),
-            Text(label,
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          ],
-        ),
-      ),
     );
   }
 }
