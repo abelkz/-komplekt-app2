@@ -1,0 +1,93 @@
+name: Миграция базы
+
+# ─────────────────────────────────────────────────────────────────────────
+# Применяет один файл из supabase/migrations к живой базе.
+#
+# Зачем: раньше каждую миграцию приходилось открывать и вручную вставлять
+# в SQL Editor. Теперь достаточно нажать «Run workflow» и выбрать файл —
+# GitHub Actions применит его сам.
+#
+# Что нужно настроить ОДИН РАЗ:
+#   Settings → Secrets and variables → Actions → New repository secret
+#     имя:      SUPABASE_DB_URL
+#     значение: строка подключения из Supabase → Project Settings →
+#               Database → Connection string → URI (вкладка Session pooler),
+#               с подставленным вместо [YOUR-PASSWORD] паролем базы.
+#
+# ВНИМАНИЕ: эта строка даёт полный доступ к базе. Она хранится в секретах
+# GitHub и в логи не попадает, но обращаться с ней нужно как с паролем —
+# не вставлять в переписку, не коммитить в репозиторий.
+#
+# Запуск: вкладка Actions → «Миграция базы» → Run workflow → вписать имя
+# файла, например 0024_app_events.sql
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'Имя файла из supabase/migrations (например 0024_app_events.sql)'
+        required: true
+        type: string
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить имя файла и его наличие
+        # Имя приходит из поля ввода, поэтому передаём его через переменную
+        # окружения, а не подставляем в строку команды: иначе кто угодно с
+        # правом запускать workflow мог бы дописать туда произвольную команду.
+        env:
+          MIGRATION_FILE: ${{ inputs.file }}
+        run: |
+          set -euo pipefail
+          case "$MIGRATION_FILE" in
+            */*|*..*|"")
+              echo "::error::Нужно имя файла без путей, например 0024_app_events.sql"
+              exit 1 ;;
+            *.sql) ;;
+            *)
+              echo "::error::Ожидается файл .sql"
+              exit 1 ;;
+          esac
+
+          if [ ! -f "supabase/migrations/$MIGRATION_FILE" ]; then
+            echo "::error::Файла supabase/migrations/$MIGRATION_FILE нет. Доступные:"
+            ls supabase/migrations
+            exit 1
+          fi
+          echo "Будет применён: supabase/migrations/$MIGRATION_FILE"
+
+      - name: Поставить клиент postgres, если его нет
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - name: Применить миграцию
+        env:
+          MIGRATION_FILE: ${{ inputs.file }}
+          PGCONN: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PGCONN" ]; then
+            echo "::error::Не задан секрет SUPABASE_DB_URL — см. комментарий вверху файла"
+            exit 1
+          fi
+
+          # --single-transaction: при ошибке ничего не остаётся применённым
+          # наполовину. Если когда-нибудь появится миграция с командой,
+          # которую нельзя выполнить в транзакции (например CREATE INDEX
+          # CONCURRENTLY), этот флаг для неё придётся убрать.
+          psql "$PGCONN" \
+            --single-transaction \
+            --set ON_ERROR_STOP=1 \
+            --file "supabase/migrations/$MIGRATION_FILE"
+
+          echo "### Миграция применена: \`$MIGRATION_FILE\`" >> "$GITHUB_STEP_SUMMARY"
