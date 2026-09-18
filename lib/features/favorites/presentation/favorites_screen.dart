@@ -65,7 +65,7 @@ class FavoritesScreen extends ConsumerWidget {
                       crossAxisCount: 2,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      mainAxisExtent: 226,
+                      mainAxisExtent: 264,
                     ),
                     itemBuilder: (_, i) => ProductGridCard(product: list[i]),
                   ),
