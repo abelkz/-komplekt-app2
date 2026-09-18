@@ -13,9 +13,20 @@ final moderationTickProvider = StateProvider<int>((ref) => 0);
 /// «Скрыть отзывы пользователя». Требование App Store 1.2 — дать людям
 /// способ пожаловаться на контент и заблокировать автора.
 class ReportMenu extends ConsumerWidget {
-  const ReportMenu({super.key, required this.reviewId, this.authorId});
+  const ReportMenu({
+    super.key,
+    required this.reviewId,
+    required this.target,
+    this.authorId,
+  });
 
   final String reviewId;
+
+  /// Откуда отзыв: `product_review` или `supplier_review`. Без этого по одному
+  /// `reviewId` не понять, в какой таблице искать — у отзывов о товарах id
+  /// типа uuid, у отзывов о поставщиках bigint (см. миграцию 0025).
+  final String target;
+
   final String? authorId;
 
   @override
@@ -54,14 +65,20 @@ class ReportMenu extends ConsumerWidget {
           );
           if (ok != true) return;
           await store.hideReview(reviewId);
-          // Отправляем жалобу на сервер, если таблица есть (не критично).
+          // Жалоба уходит администратору в content_reports (миграция 0025).
+          // Сбой не показываем пользователю: отзыв у него уже скрыт, а
+          // повторное «не отправилось» ничего не даст. Но и не глотаем молча —
+          // пишем в лог, иначе пропажа жалоб опять останется незамеченной.
           try {
             await supabase.from('content_reports').insert({
+              'target': target,
               'review_id': reviewId,
               'reporter_id': supabase.auth.currentUser?.id,
               'reason': 'objectionable',
             });
-          } catch (_) {/* модерация всё равно скрыла отзыв локально */}
+          } catch (e) {
+            debugPrint('Жалоба не сохранилась ($target $reviewId): $e');
+          }
           ref.read(moderationTickProvider.notifier).state++;
           messenger.showSnackBar(
               const SnackBar(content: Text('Жалоба отправлена, отзыв скрыт')));
