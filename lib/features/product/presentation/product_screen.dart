@@ -267,47 +267,118 @@ class _ProductBody extends StatelessWidget {
   }
 }
 
-/// Крупное фото товара на всю ширину: рейтинг сверху, название и
-/// подзаголовок поверх затемнения снизу — как в макете.
-class _Hero extends StatelessWidget {
+/// Крупное фото товара на всю ширину: листалка по галерее, тап — полный
+/// экран с зумом. Рейтинг сверху, название и подзаголовок поверх затемнения
+/// снизу — как в макете.
+///
+/// Раньше показывалось одно фото с `BoxFit.cover`: товар обрезался по краям,
+/// а градиент до `black87` съедал нижние 60% снимка. Остальные фото из
+/// `product_images` приезжали в запросе и не показывались вообще. Для
+/// маркетплейса материалов фактура — половина решения о покупке, поэтому
+/// снимок показываем целиком (`contain`) и даём разглядеть вблизи.
+class _Hero extends StatefulWidget {
   const _Hero({required this.product});
   final Product product;
 
   @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  final _pages = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  /// Полноэкранный просмотр открываем в корневом навигаторе, чтобы он лёг
+  /// поверх нижней навигации, а не внутри вкладки.
+  void _openViewer(List<String> urls, int start) {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _PhotoViewer(urls: urls, initial: start),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final url = product.primaryImageUrl;
+    final product = widget.product;
+    final urls = product.galleryUrls;
     final bg = product.placeholderColor ?? c.field;
     final onBg = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
         ? Colors.white24
         : Colors.black12;
 
     return SizedBox(
-      height: 320,
+      height: 360,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (url != null)
-            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
-          else
-            Container(
-              color: bg,
-              alignment: Alignment.center,
+          // Фон под вписанным фото: у снимка своя пропорция, и по бокам
+          // остаются поля — пусть они будут цветом товара, а не чёрным.
+          ColoredBox(color: bg),
+          if (urls.isEmpty)
+            Center(
               child: Icon(CategoryIcons.of(product.categorySlug),
                   size: 72, color: onBg),
+            )
+          else
+            PageView.builder(
+              controller: _pages,
+              itemCount: urls.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (_, i) => GestureDetector(
+                onTap: () => _openViewer(urls, i),
+                child:
+                    CachedNetworkImage(imageUrl: urls[i], fit: BoxFit.contain),
+              ),
             ),
-          // затемнение снизу под название
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black87],
-                stops: [0.4, 1],
+          // Затемнение снизу под название — короче и слабее прежнего:
+          // его задача сделать читаемым текст, а не прятать товар.
+          // IgnorePointer обязателен, иначе плёнка съедает свайпы по фото.
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black54],
+                  stops: [0.68, 1],
+                ),
               ),
             ),
           ),
+          // Счётчик кадров вместо точек: фотографий у прайсовых товаров
+          // бывает и десяток, точки в такой ряд не помещаются.
+          if (urls.length > 1)
+            Positioned(
+              top: 12,
+              right: 16,
+              child: IgnorePointer(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                  ),
+                  child: Text(
+                    '${_index + 1} / ${urls.length}',
+                    style: AppTypography.mono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
           // плашка рейтинга
           if (product.rating > 0)
             Positioned(
@@ -365,6 +436,85 @@ class _Hero extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Полноэкранный просмотр фото: свайп между кадрами, щипок для зума.
+///
+/// Нужен именно отдельный экран: в карточке фото ограничено по высоте, а у
+/// отделочных материалов решение принимают по фактуре — её надо разглядеть.
+class _PhotoViewer extends StatefulWidget {
+  const _PhotoViewer({required this.urls, required this.initial});
+
+  final List<String> urls;
+  final int initial;
+
+  @override
+  State<_PhotoViewer> createState() => _PhotoViewerState();
+}
+
+class _PhotoViewerState extends State<_PhotoViewer> {
+  late final PageController _pages =
+      PageController(initialPage: widget.initial);
+  late int _index = widget.initial;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _pages,
+              itemCount: widget.urls.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (_, i) => InteractiveViewer(
+                // 1 — фото вписано целиком, 4 — видно зерно и фактуру.
+                // Больше не даём: у прайсовых снимков не та детализация.
+                minScale: 1,
+                maxScale: 4,
+                child: Center(
+                  child: CachedNetworkImage(
+                    imageUrl: widget.urls[i],
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            if (widget.urls.length > 1)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 16,
+                child: Center(
+                  child: Text(
+                    '${_index + 1} / ${widget.urls.length}',
+                    style: AppTypography.mono(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        color: Colors.white70),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
