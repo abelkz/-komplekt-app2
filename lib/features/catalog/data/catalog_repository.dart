@@ -1,6 +1,7 @@
 import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
 import '../domain/category.dart';
+import '../domain/price_drop.dart';
 import '../domain/product.dart';
 
 /// Доступ к каталогу: категории, товары, поиск, карточка товара.
@@ -32,6 +33,48 @@ class CatalogRepository {
       return rows.map<Category>((m) => Category.fromMap(m)).toList();
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить категории');
+    }
+  }
+
+  /// Товары, у которых минимальная цена упала за последние [days] дней.
+  ///
+  /// Считает база (RPC `price_drops`, миграция 0027): таблица price_history
+  /// закрыта тарифом Про, а главную смотрит и гость, поэтому наружу отдаётся
+  /// только агрегат — насколько упала минимальная цена. Пустой ответ здесь
+  /// нормален: если за неделю никто не снижал цену, показывать нечего.
+  Future<List<PriceDrop>> priceDrops({int days = 7, int limit = 12}) async {
+    try {
+      final rows = await supabase
+          .rpc('price_drops', params: {'p_days': days, 'p_limit': limit});
+      final list = (rows as List).cast<Map<String, dynamic>>();
+      if (list.isEmpty) return const [];
+
+      // Порядок из RPC — по величине падения; PostgREST его не сохранит,
+      // поэтому восстанавливаем по исходному списку.
+      final order = [for (final r in list) r['product_id'].toString()];
+      final products = await supabase
+          .from('products')
+          .select(productSelect)
+          .inFilter('id', [for (final r in list) r['product_id']]);
+
+      final byId = {
+        for (final m in products)
+          m['id'].toString(): Product.fromMap(m as Map<String, dynamic>),
+      };
+
+      return [
+        for (final r in list)
+          if (byId[r['product_id'].toString()] != null)
+            PriceDrop(
+              product: byId[r['product_id'].toString()]!,
+              oldPrice: (r['old_price'] as num).toDouble(),
+              newPrice: (r['new_price'] as num).toDouble(),
+              percent: (r['pct'] as num).round(),
+            ),
+      ]..sort((a, b) =>
+          order.indexOf(a.product.id).compareTo(order.indexOf(b.product.id)));
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось загрузить снижения цен');
     }
   }
 
