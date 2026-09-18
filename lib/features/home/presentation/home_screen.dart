@@ -429,15 +429,38 @@ class _CategoryCardBig extends StatelessWidget {
             ),
           ),
           child: Stack(
+            fit: StackFit.expand,
             children: [
-              // Фотографий у категорий в базе нет, поэтому фактуру держит
-              // иконка водяным знаком — та же, что в карточке-заглушке.
-              Positioned(
-                right: -10,
-                bottom: -14,
-                child: Icon(CategoryIcons.of(category.slug),
-                    size: 96, color: c.accent.withValues(alpha: 0.10)),
-              ),
+              // Фото материала, если оно заполнено (миграция 0028). Пока
+              // его нет — фактуру держит иконка водяным знаком.
+              if (category.imageUrl != null) ...[
+                CachedNetworkImage(
+                  imageUrl: category.imageUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
+                // Плёнка снизу: без неё название на светлом снимке не
+                // читается. Сверху фото остаётся чистым.
+                const IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.black87],
+                        stops: [0.35, 1],
+                      ),
+                    ),
+                  ),
+                ),
+              ] else
+                Positioned(
+                  right: -10,
+                  bottom: -14,
+                  child: Icon(CategoryIcons.of(category.slug),
+                      size: 96, color: c.accent.withValues(alpha: 0.10)),
+                ),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
@@ -451,7 +474,12 @@ class _CategoryCardBig extends StatelessWidget {
                       category.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.titleMd(color: c.ink),
+                      // Поверх фото текст всегда белый: под плёнкой темно
+                      // независимо от темы приложения.
+                      style: AppTypography.titleMd(
+                          color: category.imageUrl == null
+                              ? c.ink
+                              : Colors.white),
                     ),
                   ],
                 ),
