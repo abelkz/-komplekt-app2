@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/env.dart';
+import 'core/config/http_client.dart';
 import 'core/config/local_store.dart';
 import 'core/config/supabase_client.dart';
 import 'core/demo/demo_repositories.dart';
@@ -16,6 +17,7 @@ import 'core/providers/settings_provider.dart';
 import 'core/push/push_service.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/startup_error_app.dart';
 import 'features/auth/presentation/auth_providers.dart';
 import 'features/notifications/presentation/notifications_providers.dart';
 
@@ -38,13 +40,26 @@ Future<void> main() async {
     // implicit-режим: ссылки из письма (сброс пароля) отдают токен прямо
     // в адресе и работают на вебе без code_verifier, который терялся при
     // очистке кэша/другой вкладке (в PKCE смена пароля падала).
-    await Supabase.initialize(
-      url: Env.supabaseUrl,
-      anonKey: Env.supabaseAnonKey,
-      authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.implicit,
-      ),
-    );
+    //
+    // Падение здесь раньше валило весь запуск: исключение вылетало из main()
+    // до runApp, и вместо приложения оставался чёрный экран. Теперь сбой
+    // показываем экраном с кнопкой «Повторить».
+    try {
+      await Supabase.initialize(
+        url: Env.supabaseUrl,
+        anonKey: Env.supabaseAnonKey,
+        // Таймаут на каждый запрос: иначе молчащий сервер оставляет
+        // приложение в вечной загрузке вместо понятной ошибки.
+        httpClient: TimeoutHttpClient(),
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.implicit,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Supabase не поднялся: $e');
+      runApp(StartupErrorApp(onRetry: main, details: e.toString()));
+      return;
+    }
 
     // 3. Пуши (FCM) — лучшая попытка: без настройки Firebase приложение
     //    работает как обычно, просто без уведомлений.

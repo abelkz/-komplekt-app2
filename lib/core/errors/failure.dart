@@ -1,3 +1,5 @@
+import 'dart:async';
+
 /// Типизированная ошибка для слоя данных.
 /// Репозитории ловят исключения Supabase и оборачивают их в Failure
 /// с понятным русским сообщением для UI.
@@ -14,6 +16,12 @@ class Failure implements Exception {
 /// Преобразует произвольное исключение в человекочитаемое сообщение.
 Failure mapError(Object error, {String fallback = 'Что-то пошло не так'}) {
   final text = error.toString();
+  // Запрос не уложился в срок (см. TimeoutHttpClient). Показываем это
+  // ошибкой, а не вечной загрузкой: сервер может лежать или спать.
+  if (error is TimeoutException || text.contains('TimeoutException')) {
+    return const Failure(
+        'Сервер не отвечает. Проверьте связь и попробуйте ещё раз.');
+  }
   if (text.contains('SocketException') || text.contains('Failed host lookup')) {
     return const Failure('Нет связи с сервером. Проверьте интернет.');
   }
