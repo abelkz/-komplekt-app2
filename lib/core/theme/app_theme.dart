@@ -58,11 +58,13 @@ class AppTheme {
         shape: Border(bottom: BorderSide(color: c.line, width: 1)),
       ),
 
+      // Карточка — md (12), а не lg (16): lg в макете остался за шторками и
+      // модалками, иначе разница между «панель» и «лист» пропадает.
       cardTheme: CardThemeData(
         color: c.card,
         elevation: 0,
         margin: EdgeInsets.zero,
-        shape: rounded(AppRadii.lg, side: BorderSide(color: c.line)),
+        shape: rounded(AppRadii.md, side: BorderSide(color: c.line)),
       ),
 
       inputDecorationTheme: InputDecorationTheme(
@@ -71,16 +73,17 @@ class AppTheme {
         hintStyle: TextStyle(color: c.faint),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        // Поля, кнопки и чипы — одно скругление sm (8), как в макете.
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadii.md),
+          borderRadius: BorderRadius.circular(AppRadii.sm),
           borderSide: BorderSide(color: c.line),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadii.md),
+          borderRadius: BorderRadius.circular(AppRadii.sm),
           borderSide: BorderSide(color: c.line),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadii.md),
+          borderRadius: BorderRadius.circular(AppRadii.sm),
           borderSide: BorderSide(color: c.accent, width: 1.5),
         ),
       ),

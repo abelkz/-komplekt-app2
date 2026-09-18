@@ -145,11 +145,14 @@ extension AppColorsX on BuildContext {
   AppColors get colors => Theme.of(this).extension<AppColors>()!;
 }
 
-/// Скругления «Industrial Noir»: мягкие премиальные карточки.
-/// lg — крупные контейнеры и шторки, md — карточки, sm — кнопки/поля/чипы.
+/// Скругления: калиброванные «архитектурные» углы — без круглых пилюль и без
+/// брутальных нулей.
+/// lg — шторки и модалки, md — карточки и фото, sm — кнопки/поля/чипы,
+/// xs — бейджи и мелкие технические индикаторы («ЛУЧШАЯ ЦЕНА», «В наличии»).
 class AppRadii {
   AppRadii._();
   static const double lg = 16;
   static const double md = 12;
   static const double sm = 8;
+  static const double xs = 4;
 }
