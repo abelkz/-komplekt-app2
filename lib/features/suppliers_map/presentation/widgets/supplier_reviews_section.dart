@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/moderation/review_moderation.dart';
 import '../../../../core/providers/providers.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/sign_in_required.dart';
+import '../../../auth/presentation/auth_providers.dart';
 import '../../../product/domain/review.dart';
 import '../../data/supplier_reviews_repository.dart';
 
@@ -31,11 +33,18 @@ class SupplierReviewsSection extends ConsumerWidget {
                     color: c.faint)),
             const Spacer(),
             TextButton.icon(
-              onPressed: () => showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => _Form(supplierId: supplierId),
-              ),
+              // Отзыв подписан автором — без аккаунта его оставить нельзя.
+              // Раньше форма открывалась и гостю: он заполнял её, а отправка
+              // падала на политике supplier_reviews (запись только
+              // authenticated). Спрашиваем вход до формы, как в отзывах
+              // о товаре.
+              onPressed: () => ref.read(isSignedInProvider)
+                  ? showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => _Form(supplierId: supplierId),
+                    )
+                  : promptSignIn(context, 'Войдите, чтобы оставить отзыв'),
               icon: const Icon(Icons.rate_review_outlined, size: 18),
               label: const Text('Оставить'),
             ),
