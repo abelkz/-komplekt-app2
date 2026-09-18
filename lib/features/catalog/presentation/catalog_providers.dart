@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/providers.dart';
 import '../domain/category.dart';
+import '../domain/price_drop.dart';
 import '../domain/product.dart';
 
 /// Способ сортировки результатов.
@@ -121,6 +122,21 @@ class FeedNotifier extends AsyncNotifier<List<Product>> {
 
 final feedProvider =
     AsyncNotifierProvider<FeedNotifier, List<Product>>(FeedNotifier.new);
+
+/// «Подешевело за неделю» — реальные снижения минимальной цены.
+///
+/// Пустой список здесь — нормальное состояние, а не ошибка: если за неделю
+/// никто не снижал цену, секцию на главной просто не показываем. Врать
+/// «смотрите, подешевело», когда не подешевело, нельзя.
+final priceDropsProvider = FutureProvider<List<PriceDrop>>((ref) async {
+  try {
+    return await ref.watch(catalogRepositoryProvider).priceDrops();
+  } catch (_) {
+    // Миграция 0027 могла быть ещё не применена к базе — в этом случае
+    // главная должна открыться как обычно, просто без этой секции.
+    return const [];
+  }
+});
 
 /// Товары категории с применёнными фильтрами.
 final catalogResultsProvider =
