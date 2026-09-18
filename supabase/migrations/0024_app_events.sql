@@ -34,10 +34,15 @@ create policy app_events_insert on public.app_events
   for insert with check (true);
 
 -- Читать — только админ: это внутренняя статистика, не пользовательские данные.
+--
+-- Роль берём из public.profiles, а НЕ из public.users: в живой базе таблицы
+-- users нет, она существует только в схеме из 0001_init.sql. Так же admin
+-- проверяют все миграции после объединения схем — 0015, 0017, 0020, 0021.
 drop policy if exists app_events_admin_read on public.app_events;
 create policy app_events_admin_read on public.app_events
-  for select using (exists (select 1 from public.users u
-                            where u.id = auth.uid() and u.role = 'admin'));
+  for select to authenticated
+  using (exists (select 1 from public.profiles p
+                  where p.id = auth.uid() and p.role = 'admin'));
 
 -- Править и удалять события нельзя никому из клиентов: журнал только дописывается.
 revoke update, delete on public.app_events from anon, authenticated;
