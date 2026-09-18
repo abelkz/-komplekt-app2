@@ -84,12 +84,17 @@ class Product {
   /// Есть ли среди продавцов проверенный администратором
   bool get hasVerifiedSupplier => offers.any((o) => o.supplierVerified);
 
-  /// Первое фото из галереи (или null — тогда показываем заглушку).
-  String? get primaryImageUrl {
-    if (images.isEmpty) return null;
+  /// Вся галерея в порядке сортировки — её листают на карточке товара.
+  /// Раньше наружу торчало только первое фото, и остальные снимки, уже
+  /// приезжавшие в запросе, просто никто не видел.
+  List<String> get galleryUrls {
     final sorted = [...images]..sort((a, b) => a.sort.compareTo(b.sort));
-    return sorted.first.url;
+    return [for (final i in sorted) i.url];
   }
+
+  /// Первое фото из галереи (или null — тогда показываем заглушку).
+  String? get primaryImageUrl =>
+      galleryUrls.isEmpty ? null : galleryUrls.first;
 
   /// Цвет-заглушка по hex из поля color.
   Color? get placeholderColor {
