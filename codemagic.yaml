@@ -142,9 +142,14 @@ workflows:
           xcode-project use-profiles
 
       - name: Сборка .ipa
+        # Номер версии НЕ задаём флагом: Flutter берёт его из pubspec.yaml.
+        # Раньше здесь было вшито --build-name=1.0.0, и при выпуске новой
+        # версии про этот флаг легко забыть — App Store отклоняет загрузку
+        # с уже занятым номером. Теперь версия правится в одном месте.
+        # Номер сборки остаётся от Codemagic: он должен расти при каждой
+        # загрузке, даже если версия та же.
         script: |
           flutter build ipa --release \
-            --build-name=1.0.0 \
             --build-number=$(($BUILD_NUMBER)) \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
