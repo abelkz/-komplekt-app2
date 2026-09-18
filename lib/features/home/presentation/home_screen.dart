@@ -17,6 +17,14 @@ import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../notifications/presentation/notifications_providers.dart';
 
+/// «10 разделов», «1 раздел», «2 раздела» — русские числительные.
+String _plural(int n) {
+  final m = n % 10, h = n % 100;
+  if (m == 1 && h != 11) return 'раздел';
+  if (m >= 2 && m <= 4 && (h < 10 || h >= 20)) return 'раздела';
+  return 'разделов';
+}
+
 /// Переход в категорию из любого места главной. Заодно пишем событие:
 /// по нему видно, какие разделы открывают, а какие лежат мёртвым грузом.
 void _openCategory(BuildContext context, Category category) {
@@ -98,6 +106,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final feed = ref.watch(feedProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
+    final city = ref.watch(settingsProvider.select((s) => s.city));
     final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
@@ -153,19 +162,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            const TextSpan(text: 'Сегодня '),
-                            TextSpan(
-                                text: 'дешевле',
-                                style: TextStyle(color: c.orange)),
-                            const TextSpan(text: ' здесь'),
-                          ],
-                        ),
-                        style: AppTypography.unbounded(size: 30, color: c.ink),
-                      ),
-                      const SizedBox(height: 18),
+                      // Поиск идёт первым: он и есть главное действие экрана.
+                      // Крупный лозунг «Сегодня дешевле здесь» убран — он
+                      // занимал треть первого экрана и ничего не объяснял.
+                      // Вместо него короткая подпись под полем: она говорит,
+                      // что здесь вообще происходит.
                       KeyedSubtree(
                         key: TourKeys.search,
                         child: _SearchBar(
@@ -175,6 +176,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               context.push(Routes.visualSearch),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Цены поставщиков $city на один товар — рядом.',
+                        style: AppTypography.bodyMd(color: c.gray),
+                      ),
+                      const SizedBox(height: 4),
                       const SizedBox(height: 12),
                       KeyedSubtree(
                         key: TourKeys.map,
@@ -189,9 +196,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // ── Категории (bento) ──
               SliverToBoxAdapter(
                 child: _SectionHeader(
-                  title: 'Категории',
-                  action: 'Все',
-                  onAction: null,
+                  title: 'Каталог спецификаций',
+                  // Не «Все» без обработчика — кнопка, которая ничего не
+                  // делает, раздражает. Показываем сколько разделов.
+                  action: categories.valueOrNull == null
+                      ? null
+                      : '${categories.valueOrNull!.length} '
+                          '${_plural(categories.valueOrNull!.length)}',
                 ),
               ),
               SliverToBoxAdapter(
@@ -203,8 +214,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
 
               // ── Горячие предложения ──
+              // Здесь не «подешевело за неделю»: feedProvider сортирует по
+              // savingPercent — это разброс между самым дешёвым и самым
+              // дорогим предложением на один товар, а не падение цены.
+              // Называем тем, чем оно является.
               SliverToBoxAdapter(
-                child: _SectionHeader(title: 'Горячие предложения', tag: 'SALE'),
+                child: _SectionHeader(
+                    title: 'Где цены расходятся', tag: 'ВЫГОДА'),
               ),
               SliverToBoxAdapter(
                 child: feed.when(
@@ -602,26 +618,45 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
       child: Row(
         children: [
-          Text(title,
-              style: AppTypography.unbounded(size: 17, color: c.ink)),
-          const SizedBox(width: 8),
-          if (tag != null)
+          // Жёлтая засечка у заголовка — та же метка раздела, что в карточке
+          // товара: разделы по всему приложению выглядят одинаково.
+          Container(
+            width: 3,
+            height: 14,
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: c.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.headlineSm(color: c.ink),
+            ),
+          ),
+          if (tag != null) ...[
+            const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: c.orange,
-                borderRadius: BorderRadius.circular(AppRadii.sm),
+                color: c.accent,
+                borderRadius: BorderRadius.circular(AppRadii.xs),
               ),
               child: Text(tag!,
                   style: AppTypography.sectionLabel(color: AppColors.brandInk)
                       .copyWith(fontSize: 9)),
             ),
+          ],
           const Spacer(),
           if (action != null)
             GestureDetector(
               onTap: onAction,
               child: Text(action!,
-                  style: AppTypography.sectionLabel(color: c.orange)),
+                  style: AppTypography.sectionLabel(
+                      color: onAction == null ? c.faint : c.accent)),
             ),
         ],
       ),
