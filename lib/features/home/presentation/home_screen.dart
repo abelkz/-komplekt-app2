@@ -204,6 +204,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               SliverToBoxAdapter(
                 child: _SectionHeader(
                   title: 'Каталог спецификаций',
+                  caps: true,
                   // Не «Все» без обработчика — кнопка, которая ничего не
                   // делает, раздражает. Показываем сколько разделов.
                   action: categories.valueOrNull == null
@@ -294,7 +295,10 @@ class _SearchBar extends StatelessWidget {
               textInputAction: TextInputAction.search,
               onSubmitted: onSubmit,
               decoration: const InputDecoration(
-                hintText: 'Поиск материалов…',
+                // Примеры вместо «Поиск материалов…»: подсказка должна
+                // показывать, что сюда можно вводить, а не повторять
+                // название поля.
+                hintText: 'Плитка, ламинат, смеситель…',
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -344,7 +348,11 @@ class _MapButton extends StatelessWidget {
   }
 }
 
-// ── Bento-сетка категорий: крупная плитка + 2 колонки ──
+// ── Категории: четыре крупные плитки с номерами + остальные чипами ──
+//
+// Иерархия не косметическая: она говорит, с чего начинать. Раньше все
+// разделы были равны по весу и экран читался как список без приоритета.
+// Номера 01–04 — из языка спецификации: позиции в ней нумеруют.
 class _CategoriesBento extends StatelessWidget {
   const _CategoriesBento({required this.categories});
   final List<Category> categories;
@@ -352,100 +360,96 @@ class _CategoriesBento extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (categories.isEmpty) return const SizedBox.shrink();
-    final featured = categories.first;
-    final rest = categories.skip(1).toList();
+    final top = categories.take(4).toList();
+    final rest = categories.skip(4).toList();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Column(
         children: [
-          _FeaturedCategoryTile(category: featured),
-          const SizedBox(height: 12),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: rest.length,
+            itemCount: top.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              mainAxisExtent: 92,
+              mainAxisExtent: 124,
             ),
-            itemBuilder: (_, i) => _CategoryTileSmall(category: rest[i]),
+            itemBuilder: (_, i) =>
+                _CategoryCardBig(category: top[i], number: i + 1),
           ),
+          if (rest.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: rest.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                mainAxisExtent: 44,
+              ),
+              itemBuilder: (_, i) => _CategoryChip(category: rest[i]),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _FeaturedCategoryTile extends StatelessWidget {
-  const _FeaturedCategoryTile({required this.category});
+/// Крупная плитка категории: номер, название и иконка водяным знаком.
+class _CategoryCardBig extends StatelessWidget {
+  const _CategoryCardBig({required this.category, required this.number});
   final Category category;
+  final int number;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return Material(
-      borderRadius: BorderRadius.circular(AppRadii.lg),
-      clipBehavior: Clip.antiAlias,
       color: c.card,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _openCategory(context, category),
         child: Container(
-          height: 150,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadii.lg),
+            borderRadius: BorderRadius.circular(AppRadii.md),
             border: Border.all(color: c.line),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [c.card, Color.lerp(c.card, Colors.black, 0.5)!],
+              colors: [c.card, Color.lerp(c.card, Colors.black, 0.45)!],
             ),
           ),
           child: Stack(
             children: [
-              // крупная иконка-водяной знак
+              // Фотографий у категорий в базе нет, поэтому фактуру держит
+              // иконка водяным знаком — та же, что в карточке-заглушке.
               Positioned(
                 right: -10,
-                bottom: -10,
+                bottom: -14,
                 child: Icon(CategoryIcons.of(category.slug),
-                    size: 128, color: c.orange.withOpacity(0.12)),
+                    size: 96, color: c.accent.withValues(alpha: 0.10)),
               ),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: c.orange.withOpacity(0.18),
-                        borderRadius: BorderRadius.circular(AppRadii.md),
-                      ),
-                      child: Icon(CategoryIcons.of(category.slug),
-                          color: c.orange, size: 24),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(category.name,
-                            style: AppTypography.unbounded(
-                                size: 20, color: c.ink)),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text('Смотреть все',
-                                style: AppTypography.sectionLabel(
-                                    color: c.orange)),
-                            Icon(Icons.arrow_forward_rounded,
-                                size: 14, color: c.orange),
-                          ],
-                        ),
-                      ],
+                    Text(number < 10 ? '0$number' : '$number',
+                        style: AppTypography.data(color: c.accent)),
+                    const SizedBox(height: 2),
+                    Text(
+                      category.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.titleMd(color: c.ink),
                     ),
                   ],
                 ),
@@ -458,8 +462,9 @@ class _FeaturedCategoryTile extends StatelessWidget {
   }
 }
 
-class _CategoryTileSmall extends StatelessWidget {
-  const _CategoryTileSmall({required this.category});
+/// Компактный чип категории: только название капсом.
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({required this.category});
   final Category category;
 
   @override
@@ -467,28 +472,24 @@ class _CategoryTileSmall extends StatelessWidget {
     final c = context.colors;
     return Material(
       color: c.card,
-      borderRadius: BorderRadius.circular(AppRadii.md),
+      borderRadius: BorderRadius.circular(AppRadii.sm),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _openCategory(context, category),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadii.md),
+            borderRadius: BorderRadius.circular(AppRadii.sm),
             border: Border.all(color: c.line),
           ),
-          child: Row(
-            children: [
-              Icon(CategoryIcons.of(category.slug), color: c.orange, size: 26),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(category.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600, height: 1.1)),
-              ),
-            ],
+          child: Text(
+            category.name.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: AppTypography.sectionLabel(color: c.gray)
+                .copyWith(letterSpacing: 0.8),
           ),
         ),
       ),
@@ -752,11 +753,20 @@ class _HotDealCard extends StatelessWidget {
 // ── Заголовок раздела ──
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader(
-      {required this.title, this.action, this.onAction, this.tag});
+      {required this.title,
+      this.action,
+      this.onAction,
+      this.tag,
+      this.caps = false});
   final String title;
   final String? action;
   final VoidCallback? onAction;
   final String? tag;
+
+  /// Служебный раздел набирается капсом 11 px, как метка в спецификации:
+  /// «КАТАЛОГ СПЕЦИФИКАЦИЙ». Содержательные разделы, на которые смотрят
+  /// («Подешевело за неделю»), остаются обычным заголовком.
+  final bool caps;
 
   @override
   Widget build(BuildContext context) {
@@ -765,27 +775,30 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
       child: Row(
         children: [
-          // Жёлтая засечка у заголовка — та же метка раздела, что в карточке
-          // товара: разделы по всему приложению выглядят одинаково.
-          Container(
-            width: 3,
-            height: 14,
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: c.accent,
-              borderRadius: BorderRadius.circular(2),
+          // Жёлтая засечка — только у содержательных разделов. Капс-метка
+          // и так читается как служебная, засечка рядом с ней спорит за
+          // внимание и превращается в украшение.
+          if (!caps)
+            Container(
+              width: 3,
+              height: 14,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: c.accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          // 17 px, а не 18: на узком экране «Каталог спецификаций» вместе с
-          // числом разделов справа в 18 px не помещается и обрезается
-          // многоточием.
           Flexible(
             child: Text(
-              title,
+              caps ? title.toUpperCase() : title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.headlineSm(color: c.ink)
-                  .copyWith(fontSize: 17),
+              style: caps
+                  ? AppTypography.sectionLabel(color: c.gray)
+                  // 17 px, а не 18: на узком экране длинное название вместе
+                  // с подписью справа в 18 px обрезается многоточием.
+                  : AppTypography.headlineSm(color: c.ink)
+                      .copyWith(fontSize: 17),
             ),
           ),
           if (tag != null) ...[
