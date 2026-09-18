@@ -123,7 +123,7 @@ class SearchResultsScreen extends ConsumerWidget {
                     crossAxisCount: 2,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    mainAxisExtent: 226,
+                    mainAxisExtent: 264,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (_, i) => ProductGridCard(product: list[i]),
