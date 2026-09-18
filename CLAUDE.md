@@ -134,9 +134,11 @@ Manrope — заголовки и цены, JetBrains Mono — числа.
 Накатывать можно двумя способами:
 
 - **Через GitHub Actions** — вкладка Actions → «Миграция базы» → Run workflow →
-  имя файла (`.github/workflows/migrate.yaml`). Требует секрета
-  `SUPABASE_DB_URL` — строки подключения из Supabase → Project Settings →
-  Database → Connection string → URI. Это основной путь.
+  имя файла (`.github/workflows/migrate.yaml`). Нужен один секрет
+  `SUPABASE_DB_PASSWORD` — пароль базы; адрес пулера и имя пользователя
+  workflow собирает сам из ref проекта и региона (переопределяются
+  переменными `SUPABASE_PROJECT_REF` и `SUPABASE_REGION`). Для нестандартного
+  адреса можно задать `SUPABASE_DB_URL` — он имеет приоритет. Это основной путь.
 - Вручную через SQL Editor — если доступа к Actions нет под рукой.
 
 Основные таблицы: `categories`, `brands`, `products`, `product_images`,
@@ -253,7 +255,8 @@ Manrope — заголовки и цены, JetBrains Mono — числа.
 `https://github.com/abelkz/-komplekt-app2/releases/download/latest/komplekt.apk`
 
 Секреты: `SUPABASE_URL`, `SUPABASE_ANON_KEY` и `SENTRY_DSN` — в GitHub Secrets;
-`SUPABASE_DB_URL` — там же, только для workflow миграций (полный доступ к базе); для Codemagic —
+`SUPABASE_DB_PASSWORD` (или `SUPABASE_DB_URL`) — там же, только для workflow
+миграций: даёт полный доступ к базе; для Codemagic —
 группа переменных `supabase`, интеграция App Store Connect с именем
 `komplekt_appstore` и `CERTIFICATE_PRIVATE_KEY` (base64). Если секретов нет,
 сборка не падает — уходит в демо-режим.
