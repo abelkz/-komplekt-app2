@@ -129,8 +129,15 @@ Manrope — заголовки и цены, JetBrains Mono — числа.
 
 ### Миграции
 
-`supabase/migrations/0001…0023`, применяются **по порядку**. Пока накатываются
-руками через SQL Editor; перевод на `supabase db push` — в бэклоге.
+`supabase/migrations/0001…0024`, применяются **по порядку**.
+
+Накатывать можно двумя способами:
+
+- **Через GitHub Actions** — вкладка Actions → «Миграция базы» → Run workflow →
+  имя файла (`.github/workflows/migrate.yaml`). Требует секрета
+  `SUPABASE_DB_URL` — строки подключения из Supabase → Project Settings →
+  Database → Connection string → URI. Это основной путь.
+- Вручную через SQL Editor — если доступа к Actions нет под рукой.
 
 Основные таблицы: `categories`, `brands`, `products`, `product_images`,
 `offers`, `suppliers`, `users`/`profiles`, `favorites`, `collections`,
@@ -239,12 +246,14 @@ Manrope — заголовки и цены, JetBrains Mono — числа.
 | `.github/workflows/ci.yaml` | analyze + test + debug-APK; публикует `komplekt.apk` в релиз с тегом `latest` |
 | `.github/workflows/ios.yaml` | сборка под iOS-симулятор на macOS-раннере (без подписи) |
 | `.github/workflows/web.yaml` | сборка веб-версии и деплой на GitHub Pages, `--base-href /-komplekt-app2/` |
+| `.github/workflows/migrate.yaml` | применяет выбранный файл миграции к живой базе (вручную, по кнопке) |
 | `codemagic.yaml` | боевая iOS-сборка: подпись, `.ipa`, автозаливка в TestFlight |
 
 Постоянная ссылка на свежий APK:
 `https://github.com/abelkz/-komplekt-app2/releases/download/latest/komplekt.apk`
 
-Секреты: `SUPABASE_URL` и `SUPABASE_ANON_KEY` — в GitHub Secrets; для Codemagic —
+Секреты: `SUPABASE_URL`, `SUPABASE_ANON_KEY` и `SENTRY_DSN` — в GitHub Secrets;
+`SUPABASE_DB_URL` — там же, только для workflow миграций (полный доступ к базе); для Codemagic —
 группа переменных `supabase`, интеграция App Store Connect с именем
 `komplekt_appstore` и `CERTIFICATE_PRIVATE_KEY` (base64). Если секретов нет,
 сборка не падает — уходит в демо-режим.
