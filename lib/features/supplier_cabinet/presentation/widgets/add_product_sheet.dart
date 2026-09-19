@@ -46,6 +46,7 @@ class _AddProductSheet extends ConsumerStatefulWidget {
 class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   final _name = TextEditingController();
   final _sku = TextEditingController();
+  final _brand = TextEditingController();
   final _price = TextEditingController();
   final _img = TextEditingController();
   // Данные из миграции 0029 — то, что карточка товара обещает покупателю
@@ -70,6 +71,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
     if (p == null) return;
     _name.text = p.name;
     _sku.text = p.sku;
+    _brand.text = p.brand;
     _unit = _units.contains(p.unit) ? p.unit : 'шт';
     _category = p.categorySlug;
     _img.text = p.primaryImageUrl ?? '';
@@ -132,6 +134,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
     for (final c in [
       _name,
       _sku,
+      _brand,
       _price,
       _img,
       _pack,
@@ -221,6 +224,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
         packQty: pack.value,
         warrantyMonths: warranty.value?.toInt(),
         attrs: attrs,
+        brand: _brand.text,
       );
       // цена живёт в предложении — сохраняем её отдельно
       if (ok) {
@@ -249,6 +253,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
         attrs: attrs,
         stockQty: stock.value,
         leadTimeDays: lead.value?.toInt(),
+        brand: _brand.text,
       );
     }
     if (!mounted) return;
@@ -282,6 +287,13 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
               decoration: const InputDecoration(
                   labelText: 'Название *', hintText: 'Керамогранит … 60×60'),
             ),
+            const SizedBox(height: 12),
+            // Марка: подсказываем уже заведённые, но не запрещаем новую.
+            // Без этого поля марку вписать было негде вообще, и в каталоге
+            // накопились чужие: «Переключатель Schneider Electric» числился
+            // под маркой Cersanit. Сравнение цен по марке на таких данных
+            // не работает.
+            _BrandField(controller: _brand),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -491,6 +503,85 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Поле марки с подсказками из уже заведённых.
+///
+/// Не выпадающий список: марки, которой нет в каталоге, иначе не вписать,
+/// а поставщик первым и приносит новые. Но и не голое поле: подсказка не
+/// даёт завести седьмое написание «Kerama Marazzi».
+class _BrandField extends ConsumerStatefulWidget {
+  const _BrandField({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  ConsumerState<_BrandField> createState() => _BrandFieldState();
+}
+
+class _BrandFieldState extends ConsumerState<_BrandField> {
+  // Узел фокуса живёт вместе с виджетом, а не создаётся в build: заново
+  // созданный на каждой перерисовке, он терял бы фокус прямо во время набора.
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final known = ref.watch(allBrandsProvider).valueOrNull ?? const <String>[];
+
+    return RawAutocomplete<String>(
+      textEditingController: widget.controller,
+      focusNode: _focus,
+      optionsBuilder: (value) {
+        final q = value.text.trim().toLowerCase();
+        if (q.isEmpty) return known;
+        return known.where((b) => b.toLowerCase().contains(q));
+      },
+      fieldViewBuilder: (context, ctrl, focus, onSubmit) => TextField(
+        controller: ctrl,
+        focusNode: focus,
+        onSubmitted: (_) => onSubmit(),
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(
+          labelText: 'Марка',
+          hintText: 'Kerama Marazzi, Cersanit…',
+          helperText: 'Можно вписать новую — подскажем уже заведённые',
+        ),
+      ),
+      optionsViewBuilder: (context, onSelected, options) {
+        final c = context.colors;
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            color: c.card,
+            elevation: 4,
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            child: ConstrainedBox(
+              // Без ограничения список марок растянет лист на весь экран,
+              // когда их станет много.
+              constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
+              child: ListView(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                children: [
+                  for (final o in options)
+                    ListTile(
+                      dense: true,
+                      title: Text(o, style: const TextStyle(fontSize: 14)),
+                      onTap: () => onSelected(o),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
