@@ -38,6 +38,24 @@ class SubRequest {
   bool get forSupplier => kind == 'supplier';
 }
 
+/// Марка со счётчиком товаров (RPC `admin_brands`, миграция 0035).
+class Brand {
+  const Brand({required this.id, required this.name, required this.products});
+
+  final int id;
+  final String name;
+  final int products;
+
+  /// Пустую марку можно удалить, у остальных — только объединить.
+  bool get isEmpty => products == 0;
+
+  factory Brand.fromMap(Map<String, dynamic> m) => Brand(
+        id: (m['brand_id'] as num).toInt(),
+        name: m['brand_name'] as String? ?? '',
+        products: (m['products_count'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// Жалоба на отзыв (таблица content_reports, миграция 0025).
 class ContentReport {
   const ContentReport({
@@ -602,6 +620,53 @@ class AdminRepository {
 
   /// Удаляет отзыв и закрывает все жалобы на него. Через обычный запрос
   /// это невозможно: политики дают право удалять только автору.
+  // ──────────────────────────── Марки ────────────────────────────
+
+  /// Марки со счётчиком товаров. Пустые база отдаёт первыми.
+  Future<List<Brand>> brands() async {
+    try {
+      final rows = await supabase.rpc('admin_brands');
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          Brand.fromMap(r),
+      ];
+    } catch (e) {
+      if (e.toString().contains('admin_brands')) {
+        throw const Failure('Функция ещё не создана — примените миграцию 0035');
+      }
+      throw mapError(e, fallback: 'Не удалось загрузить марки');
+    }
+  }
+
+  Future<void> renameBrand(int id, String name) async {
+    try {
+      await supabase
+          .rpc('admin_rename_brand', params: {'p_brand': id, 'p_name': name});
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось переименовать марку');
+    }
+  }
+
+  /// Склеить две марки. Возвращает, сколько товаров переехало.
+  Future<int> mergeBrands({required int from, required int into}) async {
+    try {
+      final res = await supabase
+          .rpc('admin_merge_brands', params: {'p_from': from, 'p_into': into});
+      return (res as num?)?.toInt() ?? 0;
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось объединить марки');
+    }
+  }
+
+  /// Удалить марку. База откажет, если у неё есть товары.
+  Future<void> deleteBrand(int id) async {
+    try {
+      await supabase.rpc('admin_delete_brand', params: {'p_brand': id});
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось удалить марку');
+    }
+  }
+
   Future<void> deleteReview(ContentReport report) async {
     try {
       await supabase.rpc('admin_delete_review', params: {
