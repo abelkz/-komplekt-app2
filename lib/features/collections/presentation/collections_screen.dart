@@ -127,22 +127,20 @@ class _CollectionBlock extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Шапка сметы: название, под ним служебная строка с числом позиций.
+        // Число вынесено из пилюли в строку метаданных — в макете это
+        // подпись документа, а не ярлык.
         Row(
           children: [
+            Icon(Icons.edit_note_rounded, size: 22, color: c.accent),
+            const SizedBox(width: 8),
             Expanded(
-              child: Text(collection.name,
-                  style: AppTypography.unbounded(size: 18)),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                  color: c.orangeSoft,
-                  borderRadius: BorderRadius.circular(999)),
-              child: Text('${collection.items.length} поз.',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: c.orange)),
+              child: Text(
+                collection.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.headlineMd(color: c.ink),
+              ),
             ),
             // Переименовать / удалить подборку
             PopupMenuButton<String>(
@@ -158,7 +156,28 @@ class _CollectionBlock extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.only(left: 30, bottom: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 5,
+                height: 5,
+                decoration:
+                    BoxDecoration(color: c.accent, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${collection.items.length} '
+                '${_positionsPlural(collection.items.length)}',
+                style: AppTypography.data(color: c.gray),
+              ),
+              Text('   |   ', style: AppTypography.data(color: c.line)),
+              Text('по минимальным ценам',
+                  style: AppTypography.data(color: c.faint)),
+            ],
+          ),
+        ),
 
         // Пустая подборка: подсказка вместо итога и кнопок экспорта
         if (collection.items.isEmpty) ...[
@@ -178,13 +197,9 @@ class _CollectionBlock extends ConsumerWidget {
         ],
 
         if (collection.items.isNotEmpty) ...[
-          for (final item in collection.items)
-            _ItemRow(collectionId: collection.id, item: item),
-          const SizedBox(height: 12),
-          // Итог сметы. Жёлтой заливки больше нет: акцент в этой системе —
-          // сигнал, а не фон. Сумма набрана моноширинным акцентом, под ней
-          // сказано, из чего она сложилась, — подборка уходит заказчику,
-          // и цифра без объяснения вызывает вопросы.
+          // Итог идёт ПЕРЕД списком, как в макете: смета открывается с
+          // ответа на главный вопрос — сколько всего. Раньше до суммы надо
+          // было пролистать все позиции.
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -196,24 +211,83 @@ class _CollectionBlock extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('ИТОГО ПО ПОДБОРКЕ',
+                Text('ИТОГО ПО СМЕТЕ',
                     style: AppTypography.sectionLabel(color: c.faint)),
                 const SizedBox(height: 6),
                 Text(Formatters.priceOr(collection.total, fallback: '—'),
-                    style: AppTypography.priceLg(color: c.accent)),
+                    style: AppTypography.priceLg(color: c.accent)
+                        .copyWith(fontSize: 30, height: 36 / 30)),
                 if (_supplierCount(collection) > 0) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'по минимальным ценам '
-                    '${_supplierCount(collection)} '
-                    '${_supplierPlural(_supplierCount(collection))}',
-                    style: AppTypography.bodySm(color: c.gray),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.verified_outlined, size: 14, color: c.accent),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'по минимальным ценам '
+                          '${_supplierCount(collection)} '
+                          '${_supplierPlural(_supplierCount(collection))}',
+                          style: AppTypography.bodySm(color: c.gray),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
             ),
           ),
+          const SizedBox(height: 18),
+
+          // Шапка таблицы: метка раздела и подписи колонок — как в смете
+          // на бумаге. Без них столбец справа читается как набор чисел.
+          Row(
+            children: [
+              Expanded(
+                child: Text('СПЕЦИФИКАЦИЯ МАТЕРИАЛОВ',
+                    style: AppTypography.sectionLabel(color: c.gray)),
+              ),
+              Text(
+                '${collection.items.length} '
+                '${_positionsPlural(collection.items.length)}',
+                style: AppTypography.data(color: c.faint),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 6,
+                  child: Text('МАТЕРИАЛ / ЕД.',
+                      style: AppTypography.sectionLabel(color: c.faint)
+                          .copyWith(fontSize: 10)),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text('КОЛ-ВО',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.sectionLabel(color: c.faint)
+                          .copyWith(fontSize: 10)),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text('СУММА',
+                      textAlign: TextAlign.right,
+                      style: AppTypography.sectionLabel(color: c.faint)
+                          .copyWith(fontSize: 10)),
+                ),
+              ],
+            ),
+          ),
+          Container(height: 1, color: c.line),
           const SizedBox(height: 10),
+
+          for (final item in collection.items)
+            _ItemRow(collectionId: collection.id, item: item),
+          const SizedBox(height: 4),
           Row(
             children: [
               Expanded(
@@ -397,6 +471,14 @@ int _supplierCount(Collection collection) => collection.items
 String _supplierPlural(int n) =>
     (n % 10 == 1 && n % 100 != 11) ? 'поставщика' : 'поставщиков';
 
+/// «9 позиций», «1 позиция», «2 позиции».
+String _positionsPlural(int n) {
+  final m = n % 10, h = n % 100;
+  if (m == 1 && h != 11) return 'позиция';
+  if (m >= 2 && m <= 4 && (h < 10 || h >= 20)) return 'позиции';
+  return 'позиций';
+}
+
 class _ItemRow extends ConsumerWidget {
   const _ItemRow({required this.collectionId, required this.item});
   final String collectionId;
@@ -486,58 +568,71 @@ class _ItemRow extends ConsumerWidget {
         border: Border.all(color: c.line),
         borderRadius: BorderRadius.circular(AppRadii.md),
       ),
-      child: Column(
+      // Строка сметы в три колонки — те же доли, что у подписей выше
+      // (6 / 3 / 3). Раньше количество и сумма стояли отдельной строкой под
+      // названием, и колонка сумм не складывалась.
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          InkWell(
-            onTap: () => context.push(Routes.product(p.id)),
-            child: Row(
-              children: [
-                ProductThumb(product: p, size: 46),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(p.name,
-                          maxLines: 2,
+          Expanded(
+            flex: 6,
+            child: InkWell(
+              onTap: () => context.push(Routes.product(p.id)),
+              child: Row(
+                children: [
+                  ProductThumb(product: p, size: 40),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(p.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.bodyMd(color: c.ink)),
+                        const SizedBox(height: 2),
+                        Text(
+                          // Нет предложений — вместо «0 ₸» честная подпись
+                          best == null
+                              ? Formatters.priceUnset
+                              : '${Formatters.price(best.price)}/${p.unit} · '
+                                  '${best.supplierName}',
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTypography.titleMd(color: c.ink)),
-                      const SizedBox(height: 3),
-                      Text(
-                        // Нет предложений — вместо «0 ₸» честная подпись
-                        best == null
-                            ? Formatters.priceUnset
-                            : '${best.supplierName} · '
-                                '${Formatters.price(best.price)}/${p.unit}',
-                        style: AppTypography.bodySm(color: c.faint),
-                      ),
-                    ],
+                          style: AppTypography.bodySm(color: c.faint),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _Stepper(
+          Expanded(
+            flex: 3,
+            child: Center(
+              child: _Stepper(
                 qty: item.qty,
                 unit: p.unit,
-                onMinus: () => notifier.setQty(
-                    collectionId, p.id, item.qty - 1),
-                onPlus: () => notifier.setQty(
-                    collectionId, p.id, item.qty + 1),
+                onMinus: () =>
+                    notifier.setQty(collectionId, p.id, item.qty - 1),
+                onPlus: () => notifier.setQty(collectionId, p.id, item.qty + 1),
                 // по нажатию на число — ввод вручную: набирать 40 штук
                 // плюсиком невозможно
                 onEdit: () => _editQty(context, notifier, p),
               ),
-              const Spacer(),
-              // Сумма строки — моноширинным с табличными цифрами: суммы
-              // позиций выстраиваются в колонку и читаются как смета,
-              // а не как набор разрозненных чисел.
-              Text(Formatters.priceOr(item.sum, fallback: '—'),
-                  style: AppTypography.priceMd(color: c.ink)),
-            ],
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              Formatters.priceOr(item.sum, fallback: '—'),
+              textAlign: TextAlign.right,
+              // Моноширинным с табличными цифрами: суммы позиций
+              // выстраиваются в колонку и читаются как смета.
+              style: AppTypography.priceMd(color: c.ink),
+            ),
           ),
         ],
       ),
