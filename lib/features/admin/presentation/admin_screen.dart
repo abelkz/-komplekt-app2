@@ -11,11 +11,6 @@ import '../data/admin_repository.dart';
 import 'admin_providers.dart';
 import 'widgets/supplier_actions_sheet.dart';
 
-/// Короткая дата для подписей в списке.
-String _date(DateTime d) =>
-    '${d.day.toString().padLeft(2, '0')}.'
-    '${d.month.toString().padLeft(2, '0')}.${d.year}';
-
 /// Экран администратора: заявки поставщиков и заявки на платный тариф.
 /// Открывается только с учётной записи с ролью admin.
 class AdminScreen extends ConsumerWidget {
