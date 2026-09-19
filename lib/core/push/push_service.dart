@@ -118,6 +118,16 @@ class PushService {
       // Обновление токена
       FirebaseMessaging.instance.onTokenRefresh.listen(_saveToken);
 
+      // Флаг ставим здесь, а не после настройки локальных уведомлений.
+      // `_ready` означает «Firebase Messaging пригоден» — а он уже поднят
+      // в main.dart до вызова этого метода. Плагин локальных уведомлений
+      // ниже нужен только чтобы ПОКАЗАТЬ уведомление при открытом
+      // приложении, к выдаче токена он отношения не имеет. Пока флаг
+      // стоял после него, любая его осечка молча отменяла регистрацию
+      // токена: syncToken() выходил на первой строке, а строка состояния
+      // винила Firebase, который был в полном порядке.
+      _ready = true;
+
       await _local.initialize(
         const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -141,11 +151,6 @@ class PushService {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(_channel)
           .timeout(const Duration(seconds: 15));
-
-      // Механика поднята — дальше всё необязательное. Ставим флаг здесь,
-      // чтобы он не зависел от того, как быстро человек ответит на запрос
-      // разрешения: ждать можно минуту, а токен нужен независимо.
-      _ready = true;
 
       // Запрос разрешения ждёт ответа человека, поэтому срок щедрый.
       await FirebaseMessaging.instance
