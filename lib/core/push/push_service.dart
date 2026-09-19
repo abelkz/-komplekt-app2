@@ -15,6 +15,48 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   // Системное уведомление FCM покажет сам; здесь можно вести аналитику.
 }
 
+/// Что с пушами на этом устройстве — для экрана настроек уведомлений.
+///
+/// Появилось не от хорошей жизни: вся цепочка (Firebase → разрешение →
+/// токен → строка в device_tokens) при любой поломке молчит, потому что
+/// ошибки гасятся в try/catch и уходят в debugPrint, которого на телефоне
+/// не видно. Из-за этого уведомления не работали с самого первого релиза,
+/// и заметить это было нечем — в базе просто не появлялось токенов.
+class PushStatus {
+  const PushStatus({
+    required this.firebaseReady,
+    required this.allowed,
+    required this.hasToken,
+    required this.registered,
+  });
+
+  final bool firebaseReady;
+  final bool allowed;
+  final bool hasToken;
+
+  /// Токен доехал до таблицы device_tokens — значит серверу есть куда слать.
+  final bool registered;
+
+  bool get ok => firebaseReady && allowed && hasToken && registered;
+
+  /// Первая же несработавшая ступень — её и показываем: чинить всё равно
+  /// придётся снизу вверх.
+  String get label {
+    if (!firebaseReady) {
+      return 'Firebase не настроен в этой сборке — уведомления не придут';
+    }
+    if (!allowed) return 'Уведомления запрещены в настройках телефона';
+    if (!hasToken) {
+      return 'Устройство не получило токен: на iOS так бывает без APNs-ключа '
+          'в Firebase';
+    }
+    if (!registered) {
+      return 'Токен получен, но не записан в базу — нужен вход в аккаунт';
+    }
+    return 'Устройство зарегистрировано, уведомления будут приходить';
+  }
+}
+
 /// Пуш-уведомления о снижении цены (FCM + локальные уведомления).
 /// Все методы безопасны: если Firebase не настроен, они тихо ничего не делают,
 /// чтобы остальное приложение работало без пушей.
@@ -80,6 +122,50 @@ class PushService {
       if (token != null) await _saveToken(token);
     } catch (e) {
       debugPrint('PushService.syncToken: $e');
+    }
+  }
+
+  /// Проверить всю цепочку доставки. Ошибки не поднимаем: экран настроек
+  /// должен открыться в любом случае, даже если Firebase вовсе нет.
+  static Future<PushStatus> status() async {
+    if (!_ready) {
+      return const PushStatus(
+        firebaseReady: false,
+        allowed: false,
+        hasToken: false,
+        registered: false,
+      );
+    }
+    try {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      final allowed =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+              settings.authorizationStatus == AuthorizationStatus.provisional;
+      final token = await FirebaseMessaging.instance.getToken();
+
+      var registered = false;
+      if (token != null && supabase.auth.currentUser != null) {
+        final row = await supabase
+            .from('device_tokens')
+            .select('token')
+            .eq('token', token)
+            .maybeSingle();
+        registered = row != null;
+      }
+      return PushStatus(
+        firebaseReady: true,
+        allowed: allowed,
+        hasToken: token != null,
+        registered: registered,
+      );
+    } catch (e) {
+      debugPrint('PushService.status: $e');
+      return const PushStatus(
+        firebaseReady: true,
+        allowed: false,
+        hasToken: false,
+        registered: false,
+      );
     }
   }
 
