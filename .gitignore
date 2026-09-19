@@ -7,7 +7,9 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-pubspec.lock
+# pubspec.lock хранится в git: приложение в сторе, и ломающий минор
+# в firebase_*, excel, flutter_map или geolocator не должен приезжать
+# в сборку сам собой. Обновлять — вручную, workflow «Обновить pubspec.lock».
 
 # IDE
 .idea/
