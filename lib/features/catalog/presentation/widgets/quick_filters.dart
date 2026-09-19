@@ -14,10 +14,15 @@ import 'filters_sheet.dart';
 /// её за кнопкой неправильно. Состояние общее с листом: то, что выбрано
 /// чипом, там подсвечено, и наоборот.
 class QuickFilters extends ConsumerWidget {
-  const QuickFilters({super.key, this.brands = const []});
+  const QuickFilters({super.key, this.brands = const [], this.inStockCount});
 
   /// Марки из нефильтрованного набора. Пустой список — чипы марок не нужны.
   final List<String> brands;
+
+  /// Сколько товаров набора есть в наличии хотя бы у одного поставщика.
+  /// null — пока не посчитали (список ещё грузится), число рядом с чипом
+  /// не показываем: «В наличии 0» до загрузки читается как ответ.
+  final int? inStockCount;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,7 +40,9 @@ class QuickFilters extends ConsumerWidget {
         child: Row(
           children: [
             FilterChipBox(
-              label: 'В наличии',
+              label: inStockCount == null
+                  ? 'В наличии'
+                  : 'В наличии $inStockCount',
               selected: f.inStock,
               onTap: () => notifier.apply(f.copyWith(inStock: !f.inStock)),
             ),
