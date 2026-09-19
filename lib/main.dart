@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
@@ -69,6 +71,7 @@ Future<void> main() async {
 /// только эту часть, не инициализируя Sentry заново.
 Future<void> _bootstrap() async {
   final demo = Env.demoMode;
+  var firebaseReady = false;
 
   if (!demo) {
     // Инициализируем Supabase (Auth + Postgres + Storage).
@@ -104,13 +107,16 @@ Future<void> _bootstrap() async {
     // некуда — android/ и ios/ генерируются заново каждой сборкой (§6.4).
     // Из-за этого initializeApp() падал ВСЕГДА, падение гасилось здесь же,
     // и уведомления молча не работали с самого первого релиза.
+    //
+    // Таймаут обязателен: зависший вызов — это не исключение, try/catch
+    // его не поймает, и приложение осталось бы без первого кадра.
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
-      );
-      await PushService.init();
+      ).timeout(const Duration(seconds: 10));
+      firebaseReady = true;
     } catch (e) {
-      debugPrint('Firebase не настроен — пуши отключены: $e');
+      debugPrint('Firebase не поднялся — пуши отключены: $e');
     }
   } else {
     debugPrint('ДЕМО-РЕЖИМ: встроенные данные, без Supabase/Firebase.');
@@ -129,6 +135,21 @@ Future<void> _bootstrap() async {
       child: const KomplektApp(),
     ),
   );
+
+  // Настройка пушей — строго ПОСЛЕ runApp и без await.
+  //
+  // Раньше она стояла до runApp, и это вылезло на первой же сборке, где
+  // Firebase действительно поднялся: один из вызовов внутри init() не
+  // возвращался, первый кадр не отрисовывался, и приложение показывало
+  // белый экран при каждом запуске. Зависание не ловится try/catch —
+  // единственная надёжная защита в том, чтобы вообще не ставить эту
+  // работу между стартом и первым кадром.
+  //
+  // Побочная польза: системный запрос разрешения показывается поверх
+  // живого интерфейса, а не поверх пустого экрана.
+  if (firebaseReady) {
+    unawaited(PushService.init());
+  }
 }
 
 /// Глобальный ключ — показывать уведомление о снижении цены из любого места,
