@@ -179,6 +179,31 @@ class _ProductBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Технические признаки товара: фактура, класс, ректификация
+              // (миграция 0029). Ставим до всего остального: по ним отсеивают
+              // неподходящее раньше, чем смотрят на цену.
+              if (product.attrs.isNotEmpty) ...[
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final a in product.attrs)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(AppRadii.xs),
+                          border: Border.all(color: c.line),
+                        ),
+                        child: Text(a.toUpperCase(),
+                            style: AppTypography.sectionLabel(color: c.gray)
+                                .copyWith(fontSize: 10)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+              ],
+
               // Тренд цены за месяц. Самой цены здесь больше нет: она
               // переехала в нижнюю панель, где видна на всей длине экрана,
               // а метку «лучшее» теперь несёт строка в таблице цен —
@@ -762,6 +787,16 @@ class _PriceRow extends ConsumerWidget {
                   style: AppTypography.bodySm(
                       color: offer.inStock ? c.ink : c.faint),
                 ),
+                // Остаток и срок — только если поставщик их указал
+                // (миграция 0029). Пусто значит «не сказал», а не «ноль».
+                if (offer.inStock && offer.stockQty != null)
+                  Text('${Formatters.number(offer.stockQty!)} $unit',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.data(color: c.faint))
+                else if (!offer.inStock && offer.leadTimeLabel != null)
+                  Text(offer.leadTimeLabel!,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.data(color: c.faint)),
               ],
             ),
           ),
