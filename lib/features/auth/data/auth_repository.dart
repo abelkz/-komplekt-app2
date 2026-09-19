@@ -259,6 +259,21 @@ class AuthRepository {
     }
   }
 
+  /// Аватарка пользователя (колонка из миграции 0031).
+  ///
+  /// null стирает снимок и возвращает монограмму. Сам файл в хранилище
+  /// остаётся: удалять его отсюда нельзя — ссылка могла попасть в отзыв
+  /// или в спецификацию, отданную заказчику.
+  Future<void> updateAvatar(String? url) async {
+    final uid = currentUser?.id;
+    if (uid == null) throw const Failure('Войдите в аккаунт');
+    try {
+      await supabase.from('profiles').update({'avatar_url': url}).eq('id', uid);
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось сохранить фото профиля');
+    }
+  }
+
   Future<void> updateCity(String city) async {
     final uid = currentUser?.id;
     if (uid == null) return;
