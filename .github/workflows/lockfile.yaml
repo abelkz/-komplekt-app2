@@ -1,0 +1,43 @@
+name: Обновить pubspec.lock
+
+# Замок версий пакетов хранится в git, но собрать его локально нечем:
+# Flutter стоит не у всех, кто правит проект. Поэтому файл готовит CI —
+# вручную, по кнопке, а не при каждом коммите: иначе «зафиксированные»
+# версии переписывались бы сами и фиксация теряла бы смысл.
+#
+# Когда запускать: после правки pubspec.yaml или когда сознательно решили
+# подтянуть свежие версии пакетов. После запуска проверить, что CI зелёный.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # чтобы закоммитить обновлённый pubspec.lock
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Разрешить зависимости
+        run: flutter pub get
+
+      - name: Закоммитить замок, если он изменился
+        run: |
+          # Через git status, а не git diff: в первый раз файла в индексе
+          # ещё нет, и git diff на неотслеживаемом файле молчит — замок
+          # так никогда бы и не закоммитился.
+          if [ -z "$(git status --porcelain -- pubspec.lock)" ]; then
+            echo "→ pubspec.lock не изменился, коммит не нужен"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.lock
+          git commit -m "Зафиксированы версии пакетов (pubspec.lock)"
+          git push
