@@ -134,6 +134,11 @@ final categoriesProvider = FutureProvider<List<Category>>((ref) {
   return ref.watch(catalogRepositoryProvider).categories();
 });
 
+/// Марки каталога — подсказки в форме товара у поставщика.
+final allBrandsProvider = FutureProvider<List<String>>((ref) {
+  return ref.watch(catalogRepositoryProvider).brands();
+});
+
 /// Лента вдохновения для главной (Pinterest-masonry) с пагинацией.
 class FeedNotifier extends AsyncNotifier<List<Product>> {
   static const _pageSize = 20;
