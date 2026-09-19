@@ -72,6 +72,12 @@ workflows:
           # про шифрование при каждой загрузке в TestFlight.
           /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$P"
+          # Доставка пуша, когда приложение свёрнуто или выгружено. Без этого
+          # режима система будит приложение только по тапу, а «тихие» пуши
+          # (content-available) не доходят вовсе.
+          /usr/libexec/PlistBuddy -c "Delete :UIBackgroundModes" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$P"
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string remote-notification" "$P"
           /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$P"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string tel" "$P"
@@ -105,14 +111,21 @@ workflows:
           sed -i '' -E 's/TARGETED_DEVICE_FAMILY = "?1,2"?;/TARGETED_DEVICE_FAMILY = "1";/g' \
             ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Вход через Apple — entitlement
+      - name: Entitlements — вход через Apple и пуши
         # Возможность «Sign in with Apple» требует entitlement в проекте.
         # Создаём файл и прописываем путь к нему во все конфигурации Runner.
+        #
+        # aps-environment здесь не менее важен: без него iOS вообще не выдаёт
+        # APNs-токен, FirebaseMessaging.getToken() возвращает null, и пуши
+        # молча не приходят — ровно то, из-за чего device_tokens была пуста.
+        # Значение production: этот workflow собирает IOS_APP_STORE, а
+        # development-токены с ним несовместимы.
         script: |
           set -e
           printf '%s' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>' > ios/Runner/Runner.entitlements
           /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin array" ios/Runner/Runner.entitlements
           /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin:0 string Default" ios/Runner/Runner.entitlements
+          /usr/libexec/PlistBuddy -c "Add :aps-environment string production" ios/Runner/Runner.entitlements
           sed -i '' -E 's#(PRODUCT_BUNDLE_IDENTIFIER = kz\.komplekt\.app;)#\1 CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;#g' \
             ios/Runner.xcodeproj/project.pbxproj
 
