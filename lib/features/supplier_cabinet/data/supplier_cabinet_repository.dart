@@ -228,6 +228,7 @@ class SupplierCabinetRepository {
     String? website,
     int? sinceYear,
     String? about,
+    String? logoUrl,
   }) async {
     final uid = await _requireSession();
     try {
@@ -236,6 +237,9 @@ class SupplierCabinetRepository {
         'website': _nullIfEmpty(website),
         'since_year': sinceYear,
         'about': _nullIfEmpty(about),
+        // Колонка из миграции 0031. null здесь — осознанное «убрать логотип»,
+        // форма всегда присылает текущее состояние.
+        'logo_url': _nullIfEmpty(logoUrl),
       }).eq('owner_id', uid);
     } catch (e) {
       throw _dbFail(e, 'Не удалось сохранить профиль компании');
