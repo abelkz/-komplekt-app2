@@ -95,16 +95,21 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$P"
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string kz.komplekt.app" "$P"
 
-      - name: iOS deployment target 13.0
+      - name: iOS deployment target 15.0
+        # Было 13.0. Поднято вместе с firebase_core 4.x: он тянет Firebase
+        # iOS SDK 12.x, которому нужен минимум iOS 15.0, и с 13.0 падает
+        # уже `pod install`. Пользователей это не задевает: собранные
+        # приложения и так уезжали с «Min OS version: 15.0» — планку
+        # поднимал кто-то из подов, просто молча.
         script: |
           if grep -q "^# *platform :ios" ios/Podfile; then
-            sed -i '' "s/^# *platform :ios.*/platform :ios, '13.0'/" ios/Podfile
+            sed -i '' "s/^# *platform :ios.*/platform :ios, '15.0'/" ios/Podfile
           elif ! grep -q "^platform :ios" ios/Podfile; then
-            printf "platform :ios, '13.0'\n%s\n" "$(cat ios/Podfile)" > ios/Podfile
+            printf "platform :ios, '15.0'\n%s\n" "$(cat ios/Podfile)" > ios/Podfile
           else
-            sed -i '' "s/^platform :ios.*/platform :ios, '13.0'/" ios/Podfile
+            sed -i '' "s/^platform :ios.*/platform :ios, '15.0'/" ios/Podfile
           fi
-          sed -i '' -E "s/IPHONEOS_DEPLOYMENT_TARGET = 1[0-2]\.[0-9]+;/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/g" \
+          sed -i '' -E "s/IPHONEOS_DEPLOYMENT_TARGET = 1[0-4]\.[0-9]+;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g" \
             ios/Runner.xcodeproj/project.pbxproj
 
       - name: Зафиксировать Bundle ID и только iPhone
