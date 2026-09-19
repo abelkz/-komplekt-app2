@@ -11,11 +11,14 @@ import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/sign_in_required.dart';
 import '../../admin/presentation/admin_providers.dart';
+import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/presentation/catalog_providers.dart';
+import '../../collections/presentation/collections_providers.dart';
 import '../../favorites/presentation/favorites_providers.dart';
 
 /// Экран 8 — Профиль пользователя.
@@ -55,50 +58,41 @@ class ProfileScreen extends ConsumerWidget {
           child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
           children: [
-            Text('Профиль', style: AppTypography.unbounded()),
+            Row(
+              children: [
+                Text('Профиль',
+                    style: AppTypography.headlineSm(color: c.ink)),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: c.field,
+                    borderRadius: BorderRadius.circular(AppRadii.xs),
+                  ),
+                  child: Text(_roleLabel(profile.valueOrNull, isAdmin),
+                      style: AppTypography.data(color: c.accent)),
+                ),
+                const Spacer(),
+                _SquareAction(
+                  icon: Icons.notifications_none_rounded,
+                  tooltip: 'Уведомления',
+                  onTap: () => context.push(Routes.notifications),
+                ),
+              ],
+            ),
             const SizedBox(height: 14),
 
-            // Карточка пользователя
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: c.card,
-                border: Border.all(color: c.line),
-                borderRadius: BorderRadius.circular(AppRadii.md),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: c.orangeSoft,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: c.orange, width: 2),
-                    ),
-                    child: Text(initials,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 20,
-                            color: c.orange)),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 15)),
-                        const SizedBox(height: 2),
-                        Text('Город: ${settings.city}',
-                            style: TextStyle(fontSize: 12, color: c.gray)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            // Карточка пользователя: монограмма, контакт, роль и город,
+            // а под ними полоса показателей — всё, что приложение о человеке
+            // действительно знает.
+            _IdentityCard(
+              name: name,
+              initials: initials,
+              phone: profile.valueOrNull?.phone,
+              role: _roleLine(profile.valueOrNull, isAdmin, settings.city),
+              city: settings.city,
+              onCity: () => _cityDialog(context, ref),
             ),
             const SizedBox(height: 12),
 
@@ -580,13 +574,246 @@ class ProfileScreen extends ConsumerWidget {
   }
 }
 
+/// Короткая метка роли для чипа у заголовка.
+String _roleLabel(AppUser? u, bool isAdmin) {
+  if (isAdmin) return 'АДМИН';
+  if (u?.isSupplier == true) return 'ПОСТАВЩИК';
+  return 'ПОКУПАТЕЛЬ';
+}
+
+/// Строка под именем: кто человек и в каком городе смотрит каталог.
+/// В макете здесь «Инженер технадзора · Астана» — должности приложение не
+/// хранит, поэтому пишем то, что знаем на самом деле: роль и город.
+String _roleLine(AppUser? u, bool isAdmin, String city) {
+  final role = isAdmin
+      ? 'Администратор'
+      : (u?.isSupplier == true ? 'Поставщик' : 'Покупатель');
+  return '$role · $city';
+}
+
 class _MenuItemData {
-  _MenuItemData(this.title, this.value, {this.icon, this.onTap, this.trailing});
+  _MenuItemData(
+    this.title,
+    this.value, {
+    this.subtitle,
+    this.icon,
+    this.onTap,
+    this.trailing,
+  });
   final String title;
   final String value;
+
+  /// Пояснение под названием пункта: что именно он делает.
+  final String? subtitle;
   final IconData? icon;
   final VoidCallback? onTap;
   final Widget? trailing;
+}
+
+/// Квадратная кнопка-действие в шапке экрана.
+class _SquareAction extends StatelessWidget {
+  const _SquareAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(icon, size: 20, color: c.gray),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Карточка пользователя: монограмма, имя, телефон, роль и выбор города.
+class _IdentityCard extends ConsumerWidget {
+  const _IdentityCard({
+    required this.name,
+    required this.initials,
+    required this.phone,
+    required this.role,
+    required this.city,
+    required this.onCity,
+  });
+
+  final String name;
+  final String initials;
+  final String? phone;
+  final String role;
+  final String city;
+  final VoidCallback onCity;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final cols = ref.watch(collectionsProvider).valueOrNull ?? const [];
+
+    // Показатели считаем по подборкам — это единственное, что приложение
+    // про человека действительно знает. Выдуманных «14 баз» здесь нет.
+    final specs = cols.length;
+    var saved = 0.0;
+    final suppliers = <String>{};
+    for (final col in cols) {
+      for (final item in col.items) {
+        final p = item.product;
+        if (p == null) continue;
+        final mn = p.minPrice, mx = p.maxPrice;
+        if (mn != null && mx != null && mx > mn) saved += (mx - mn) * item.qty;
+        final sid = p.bestOffer?.supplierId;
+        if (sid != null) suppliers.add(sid);
+      }
+    }
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border.all(color: c.line),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Монограмма прямоугольная со скруглением, а не круг:
+                // круглые аватары — язык соцсетей, здесь учётная запись.
+                Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.orangeSoft,
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Text(initials,
+                      style: AppTypography.headlineMd(color: c.accent)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.headlineSm(color: c.ink)),
+                      if (phone != null && phone!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(phone!,
+                            style: AppTypography.data(color: c.faint)),
+                      ],
+                      const SizedBox(height: 4),
+                      Text(role.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.sectionLabel(color: c.gray)
+                              .copyWith(fontSize: 10)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Material(
+                  color: c.field,
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: onCity,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.location_on_outlined,
+                              size: 15, color: c.accent),
+                          const SizedBox(width: 4),
+                          Text(city,
+                              style: AppTypography.data(color: c.ink)),
+                          Icon(Icons.expand_more_rounded,
+                              size: 14, color: c.faint),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Полоса показателей на подложке потемнее — во всю ширину карточки.
+          Container(
+            decoration: BoxDecoration(
+              color: c.paper,
+              border: Border(top: BorderSide(color: c.line)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                _Stat(label: 'СМЕТЫ', value: '$specs'),
+                _Stat(
+                  label: 'СЭКОНОМЛЕНО',
+                  value: Formatters.priceOr(saved, fallback: '—'),
+                  accent: true,
+                ),
+                _Stat(label: 'ПОСТАВЩИКОВ', value: '${suppliers.length}'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.value, this.accent = false});
+  final String label;
+  final String value;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.sectionLabel(color: c.faint)
+                  .copyWith(fontSize: 9)),
+          const SizedBox(height: 2),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.priceMd(color: accent ? c.accent : c.ink)),
+        ],
+      ),
+    );
+  }
 }
 
 /// Заметная карточка входа в кабинет поставщика (как в макете).
@@ -690,13 +917,28 @@ class _MenuCard extends StatelessWidget {
                       const SizedBox(width: 12),
                     ],
                     Expanded(
-                      child: Text(items[i].title,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w600)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(items[i].title,
+                              style: AppTypography.bodyMd(color: c.ink)),
+                          // Пояснение под названием: в списке настроек
+                          // человек не должен гадать, что сделает пункт.
+                          if (items[i].subtitle != null) ...[
+                            const SizedBox(height: 2),
+                            Text(items[i].subtitle!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.bodySm(color: c.faint)),
+                          ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     items[i].trailing ??
                         Text(items[i].value,
-                            style: TextStyle(fontSize: 12, color: c.gray)),
+                            style: AppTypography.data(color: c.gray)),
                     if (items[i].trailing == null && items[i].onTap != null)
                       Padding(
                         padding: const EdgeInsets.only(left: 4),
