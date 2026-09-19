@@ -181,9 +181,16 @@ workflows:
         # с уже занятым номером. Теперь версия правится в одном месте.
         # Номер сборки остаётся от Codemagic: он должен расти при каждой
         # загрузке, даже если версия та же.
+        #
+        # BUILD_TAG прокидываем так же, как в ci.yaml: без него метка внизу
+        # профиля у ВСЕХ iOS-сборок одинаковая («local»), и отличить свежую
+        # от старой нельзя — а именно для этого она и заведена (CLAUDE.md §7).
+        # Поймано 19.09.2026: при разборе, почему не приходят уведомления,
+        # не удалось понять, какая сборка стоит на телефоне.
         script: |
           flutter build ipa --release \
             --build-number=$(($BUILD_NUMBER)) \
+            --dart-define=BUILD_TAG="$BUILD_NUMBER-${CM_COMMIT:0:7}" \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
