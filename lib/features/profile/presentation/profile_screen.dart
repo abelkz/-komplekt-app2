@@ -9,6 +9,7 @@ import '../../../core/config/build_info.dart';
 import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
+import '../../../core/push/push_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
@@ -381,7 +382,12 @@ class ProfileScreen extends ConsumerWidget {
                 const Text('Уведомления о снижении цены',
                     style:
                         TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
+                // Переключатель ниже говорит только о желании получать пуши.
+                // Доходят ли они вообще — отдельный вопрос: цепочка
+                // Firebase → разрешение → токен → база рвётся молча.
+                const _PushStatusLine(),
+                const SizedBox(height: 4),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Присылать уведомления'),
@@ -1054,6 +1060,56 @@ class _MenuCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Строка состояния пушей в листе настроек уведомлений.
+///
+/// Показывается всегда, а не только при поломке: «уведомления будут
+/// приходить» — такой же полезный ответ, как и причина, по которой не будут.
+class _PushStatusLine extends StatefulWidget {
+  const _PushStatusLine();
+
+  @override
+  State<_PushStatusLine> createState() => _PushStatusLineState();
+}
+
+class _PushStatusLineState extends State<_PushStatusLine> {
+  // Future считается один раз, а не в build: лист перестраивается на каждом
+  // щелчке тумблера, и запрос уходил бы заново, а строка — мигала бы.
+  late final Future<PushStatus> _future = PushService.status();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return FutureBuilder<PushStatus>(
+      future: _future,
+      builder: (context, snap) {
+        final status = snap.data;
+        // Пока проверяем — молчим: мигнуть предупреждением, которое через
+        // полсекунды сменится на «всё хорошо», хуже, чем не показать ничего.
+        if (status == null) return const SizedBox(height: 18);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              status.ok
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.error_outline_rounded,
+              size: 16,
+              color: status.ok ? c.gray : c.orange,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                status.label,
+                style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
