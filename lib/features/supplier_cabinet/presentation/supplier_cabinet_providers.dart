@@ -76,6 +76,7 @@ class CabinetController extends AsyncNotifier<void> {
     List<String> attrs = const [],
     double? stockQty,
     int? leadTimeDays,
+    String? brand,
   }) =>
       _run(() => ref.read(supplierCabinetRepositoryProvider).addProduct(
             name: name,
@@ -91,6 +92,7 @@ class CabinetController extends AsyncNotifier<void> {
             attrs: attrs,
             stockQty: stockQty,
             leadTimeDays: leadTimeDays,
+            brand: brand,
           ));
 
   /// Своя цена к уже существующей карточке общего каталога.
@@ -119,6 +121,7 @@ class CabinetController extends AsyncNotifier<void> {
     double? packQty,
     int? warrantyMonths,
     List<String> attrs = const [],
+    String? brand,
   }) =>
       _run(() => ref.read(supplierCabinetRepositoryProvider).updateProduct(
             productId: productId,
@@ -130,6 +133,7 @@ class CabinetController extends AsyncNotifier<void> {
             packQty: packQty,
             warrantyMonths: warrantyMonths,
             attrs: attrs,
+            brand: brand,
           ));
 
   Future<bool> saveOffer({
