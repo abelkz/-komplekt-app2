@@ -63,7 +63,9 @@ class Supplier {
   final double? lat;
   final double? lng;
 
-  /// Расстояние до пользователя в метрах (заполняется RPC nearby_suppliers).
+  /// Расстояние до пользователя в метрах. Считается на клиенте по формуле
+  /// гаверсинуса: RPC `nearby_suppliers` из ранней схемы в живой базе нет,
+  /// поставщики приезжают обычным select и сортируются уже здесь.
   final double? distanceM;
 
   bool get hasLocation => lat != null && lng != null;
