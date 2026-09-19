@@ -15,12 +15,17 @@ class CatalogRepository {
   // таблице brands и приезжает вложенным объектом brands(name).
   // Запрашивать несуществующую колонку нельзя: PostgREST отвечает 42703
   // и падает весь запрос (из-за этого «Поиск не удался» и пустое избранное).
+  //
+  // pack_qty, warranty_months, attrs, stock_qty и lead_time_days добавлены
+  // миграцией 0029. Если её не накатить на базу, весь запрос упадёт с 42703
+  // — порядок здесь строгий: сначала миграция, потом сборка с этим кодом.
   static const productSelect =
       'id,name,sku,unit,color,image_url,description,rating,category_slug,'
-      'brand_id,'
+      'brand_id,pack_qty,warranty_months,attrs,'
       'brands(name),'
       'product_images(url,sort),'
-      'offers(id,price,prev_price,in_stock,price_updated_at,promoted_until,supplier_id,'
+      'offers(id,price,prev_price,in_stock,price_updated_at,promoted_until,'
+      'stock_qty,lead_time_days,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website,verified,plan,plan_until))';
 
   /// Список категорий (по полю sort).
