@@ -49,4 +49,32 @@ void main() {
     expect(needsAccount('/product/1'), false);
     expect(needsAccount('/profile'), false);
   });
+
+  /// Ссылку на товар присылают человеку, у которого приложение открывается
+  /// впервые. Он попадает на выбор города — и адрес товара обязан пережить
+  /// этот шаг, иначе ссылка бесполезна: проверено на вебе, выбрасывало
+  /// на главную.
+  group('возврат по ссылке после онбординга и входа', () {
+    test('адрес товара переживает выбор города', () {
+      expect(backTo(Uri.encodeComponent('/product/47')), '/product/47');
+    });
+
+    test('параметры запроса не теряются', () {
+      expect(backTo(Uri.encodeComponent('/search?q=плитка')), '/search?q=плитка');
+    });
+
+    test('пришёл сам, без ссылки — на главную', () {
+      expect(backTo(null), '/home');
+      expect(backTo(''), '/home');
+    });
+
+    test('возврат на сам онбординг закольцевал бы переход', () {
+      expect(backTo(Uri.encodeComponent('/onboarding')), '/home');
+      expect(backTo(Uri.encodeComponent('/onboarding?from=%2Fhome')), '/home');
+    });
+
+    test('корень тоже не адрес для возврата', () {
+      expect(backTo(Uri.encodeComponent('/')), '/home');
+    });
+  });
 }
