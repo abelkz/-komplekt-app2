@@ -58,13 +58,17 @@ class CatalogScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // Марки берём из нефильтрованного набора: иначе после выбора
-          // «Cersanit» остальные чипы исчезли бы и вернуться было бы некуда.
-          QuickFilters(
-            brands: brandsOf(
-                ref.watch(categoryProductsProvider(slug)).valueOrNull ??
-                    const []),
-          ),
+          // Марки и счётчик наличия берём из нефильтрованного набора: иначе
+          // после выбора «Cersanit» остальные чипы исчезли бы и вернуться
+          // было бы некуда, а счётчик показывал бы сам себя.
+          Builder(builder: (_) {
+            final all =
+                ref.watch(categoryProductsProvider(slug)).valueOrNull;
+            return QuickFilters(
+              brands: brandsOf(all ?? const []),
+              inStockCount: all == null ? null : inStockCountOf(all),
+            );
+          }),
           Expanded(child: _results(context, ref, results)),
         ],
       ),

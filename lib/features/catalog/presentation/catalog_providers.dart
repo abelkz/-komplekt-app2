@@ -220,6 +220,10 @@ final searchResultsProvider =
   return applyFilters(products, ref.watch(filtersProvider));
 });
 
+/// Сколько товаров набора есть в наличии хотя бы у одного поставщика.
+int inStockCountOf(List<Product> products) =>
+    products.where((p) => p.offers.any((o) => o.inStock)).length;
+
 /// Марки, которые вообще встречаются в этом наборе товаров.
 ///
 /// Чипы марок показываем, только если марок больше одной: в категории

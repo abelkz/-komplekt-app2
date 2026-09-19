@@ -75,11 +75,13 @@ class SearchResultsScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          QuickFilters(
-            brands: brandsOf(
-                ref.watch(searchProductsProvider(query)).valueOrNull ??
-                    const []),
-          ),
+          Builder(builder: (_) {
+            final all = ref.watch(searchProductsProvider(query)).valueOrNull;
+            return QuickFilters(
+              brands: brandsOf(all ?? const []),
+              inStockCount: all == null ? null : inStockCountOf(all),
+            );
+          }),
           Expanded(child: _results(context, ref, results)),
         ],
       ),
