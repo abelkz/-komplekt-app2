@@ -10,6 +10,13 @@ name: Обновить pubspec.lock
 
 on:
   workflow_dispatch:
+  push:
+    # Замок пересобирается там, где он мог устареть: при правке списка
+    # зависимостей и при правке самого этого файла. Зациклиться нельзя —
+    # коммит ниже трогает только pubspec.lock, которого в путях нет.
+    paths:
+      - pubspec.yaml
+      - .github/workflows/lockfile.yaml
 
 permissions:
   contents: write   # чтобы закоммитить обновлённый pubspec.lock
