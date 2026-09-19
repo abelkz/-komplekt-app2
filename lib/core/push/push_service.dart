@@ -228,15 +228,17 @@ class PushService {
       }
       return PushStatus(
         firebaseReady: true,
-        allowed: allowed,
+        permission: permission,
         hasToken: token != null,
         registered: registered,
       );
     } catch (e) {
       debugPrint('PushService.status: $e');
+      // permission: null — проверить не вышло. Врать «запрещено» нельзя:
+      // причина может быть любой, вплоть до таймаута.
       return const PushStatus(
         firebaseReady: true,
-        allowed: false,
+        permission: null,
         hasToken: false,
         registered: false,
       );
