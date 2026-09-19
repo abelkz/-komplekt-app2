@@ -23,6 +23,7 @@ import 'core/theme/app_theme.dart';
 import 'core/widgets/startup_error_app.dart';
 import 'features/auth/presentation/auth_providers.dart';
 import 'features/notifications/presentation/notifications_providers.dart';
+import 'firebase_options.dart';
 
 /// Пришли по ссылке сброса пароля? Ловим метку из адреса ДО того, как
 /// Supabase обработает и очистит URL. Проверяем на первом кадре.
@@ -97,8 +98,16 @@ Future<void> _bootstrap() async {
 
     // Пуши (FCM) — лучшая попытка: без настройки Firebase приложение
     // работает как обычно, просто без уведомлений.
+    //
+    // Настройки передаём явно. Без них Firebase ищет нативные конфиги
+    // (google-services.json / GoogleService-Info.plist), а положить их
+    // некуда — android/ и ios/ генерируются заново каждой сборкой (§6.4).
+    // Из-за этого initializeApp() падал ВСЕГДА, падение гасилось здесь же,
+    // и уведомления молча не работали с самого первого релиза.
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       await PushService.init();
     } catch (e) {
       debugPrint('Firebase не настроен — пуши отключены: $e');
