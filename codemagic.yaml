@@ -154,34 +154,6 @@ workflows:
           sed -i '' -E 's#(PRODUCT_BUNDLE_IDENTIFIER = kz\.komplekt\.app;)#\1 CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;#g' \
             ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Диагностика iOS — что сгенерировалось
-        # ВРЕМЕННЫЙ шаг, снять после починки пушей.
-        #
-        # Зачем. iOS не выдаёт APNs-токен: getAPNSToken() возвращает null,
-        # getToken() падает с apns-token-not-set (сборка 34). При этом
-        # разрешение выдано, пуши от ДРУГИХ приложений на этот телефон
-        # приходят, APNs-ключ и Team ID в Firebase проверены, профиль
-        # подписи содержит aps-environment (иначе подпись падала бы, как
-        # на сборке 26). Догадки кончились — нужен факт о том, что реально
-        # попало в собранное приложение, а не о том, что мы туда клали.
-        #
-        # Ни одна команда здесь не должна ронять сборку.
-        script: |
-          echo "=== flutter --version ==="
-          flutter --version 2>&1 || true
-          echo "=== ls ios/Runner ==="
-          ls -1 ios/Runner 2>&1 || true
-          echo "=== AppDelegate.swift ==="
-          cat ios/Runner/AppDelegate.swift 2>&1 || true
-          echo "=== Runner.entitlements ==="
-          cat ios/Runner/Runner.entitlements 2>&1 || true
-          echo
-          echo "=== UIApplicationSceneManifest в Info.plist ==="
-          /usr/libexec/PlistBuddy -c "Print :UIApplicationSceneManifest" \
-            ios/Runner/Info.plist 2>&1 || echo "ключа нет — классический жизненный цикл"
-          echo "=== CODE_SIGN_ENTITLEMENTS в project.pbxproj ==="
-          grep -c "CODE_SIGN_ENTITLEMENTS" ios/Runner.xcodeproj/project.pbxproj 2>&1 || true
-
       - name: Flutter-зависимости
         script: flutter pub get
 
@@ -226,26 +198,16 @@ workflows:
             --dart-define=BUILD_TAG="$BUILD_NUMBER-${CM_COMMIT:0:7}" \
             --export-options-plist=/Users/builder/export_options.plist
 
-      - name: Диагностика подписи — что в собранном приложении
-        # ВРЕМЕННЫЙ шаг, снять вместе с предыдущим.
-        #
-        # Главная строчка всей этой затеи. `codesign -d --entitlements`
-        # показывает права, которые реально вшиты в подписанный бинарник, —
-        # в отличие от файла Runner.entitlements, который лишь просят учесть.
-        # Если aps-environment здесь нет, iOS не выдаст APNs-токен и никакой
-        # ошибки при этом не покажет: ровно то, что мы и наблюдаем.
+      - name: Права подписанного приложения в лог
+        # Печатает то, что реально вшито в бинарник, а не то, что мы просили
+        # вшить. Оставлено насовсем: разбор поломки пушей (сборки 26–37)
+        # три раза упирался в вопрос «а точно ли aps-environment доехал»,
+        # и ответа не было нигде — файл Runner.entitlements его не даёт.
+        # Строчка в логе стоит секунды и снимает целый класс догадок.
         script: |
           APP=$(ls -d build/ios/archive/Runner.xcarchive/Products/Applications/*.app 2>/dev/null | head -1)
-          echo "APP=$APP"
           if [ -n "$APP" ]; then
-            echo "=== права подписанного приложения ==="
             codesign -d --entitlements :- "$APP" 2>&1 || true
-            echo "=== UIApplicationSceneManifest в собранном Info.plist ==="
-            /usr/libexec/PlistBuddy -c "Print :UIApplicationSceneManifest" \
-              "$APP/Info.plist" 2>&1 || echo "ключа нет"
-            echo "=== UIBackgroundModes ==="
-            /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" \
-              "$APP/Info.plist" 2>&1 || echo "ключа нет"
           else
             echo "архив не найден — пропускаем"
           fi
