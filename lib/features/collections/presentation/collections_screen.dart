@@ -17,6 +17,7 @@ import '../../catalog/presentation/widgets/product_thumb.dart';
 import '../data/spec_export.dart';
 import '../domain/collection.dart';
 import 'collections_providers.dart';
+import 'widgets/qty_calculator_page.dart';
 import 'widgets/text_entry_page.dart';
 
 /// Экран 7 — Подборки/проекты: позиции, количество, итог, экспорт.
@@ -617,21 +618,14 @@ class _ItemRow extends ConsumerWidget {
     }
   }
 
-  /// Ввод количества с клавиатуры — набирать 40 штук плюсиком невозможно.
+  /// Ввод количества — набирать 40 штук плюсиком невозможно.
+  ///
+  /// Открываем не голое поле, а расчёт: то же ручное число вводится в первую
+  /// строку, но рядом сразу видно запас на подрезку и округление до целых
+  /// упаковок. Без этого смета занижена ровно на то, что доплачивают потом.
   Future<void> _editQty(
       BuildContext context, CollectionsNotifier notifier, Product p) async {
-    final raw = await promptText(
-      context,
-      title: 'Количество',
-      subtitle: p.name,
-      label: 'Количество',
-      initial: Formatters.number(item.qty),
-      suffix: p.unit,
-      action: 'Готово',
-      keyboard: const TextInputType.numberWithOptions(decimal: true),
-    );
-    if (raw == null) return;
-    final value = double.tryParse(raw.replaceAll(',', '.').replaceAll(' ', ''));
+    final value = await showQtyCalculator(context, p, initial: item.qty);
     if (value == null || value <= 0) return;
     try {
       await notifier.setQty(collectionId, p.id, value);
