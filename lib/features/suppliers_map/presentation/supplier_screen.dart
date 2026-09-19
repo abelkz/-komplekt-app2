@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/avatar.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/widgets/product_card.dart';
 import '../domain/supplier.dart';
@@ -110,14 +111,13 @@ class _Header extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                    color: c.orangeSoft,
-                    borderRadius: BorderRadius.circular(14)),
-                child: Icon(Icons.storefront_outlined, color: c.orange),
+              // Логотип, а если его нет — буква названия. Значок магазина
+              // здесь был одинаковый у всех: узнать по нему компанию нельзя.
+              Avatar(
+                name: supplier.name,
+                url: supplier.logoUrl,
+                size: 52,
+                company: true,
               ),
               const SizedBox(width: 12),
               Expanded(

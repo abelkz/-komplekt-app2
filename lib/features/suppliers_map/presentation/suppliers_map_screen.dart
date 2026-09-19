@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/avatar.dart';
 import '../domain/supplier.dart';
 import 'suppliers_providers.dart';
 
@@ -116,9 +117,17 @@ class SuppliersMapScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(s.name,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Row(
+              children: [
+                Avatar(name: s.name, url: s.logoUrl, size: 40, company: true),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(s.name,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             Row(
               children: [
