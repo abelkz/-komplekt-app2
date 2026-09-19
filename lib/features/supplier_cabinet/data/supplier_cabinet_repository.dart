@@ -383,6 +383,7 @@ class SupplierCabinetRepository {
     List<String> attrs = const [],
     double? stockQty,
     int? leadTimeDays,
+    String? brand,
   }) async {
     final uid = await _requireSession();
     try {
@@ -412,9 +413,32 @@ class SupplierCabinetRepository {
         'stock_qty': stockQty,
         'lead_time_days': leadTimeDays,
       });
+
+      // Товар и цена уже вставлены. Если марка не записалась, говорить
+      // «не удалось сохранить товар» нельзя: поставщик нажмёт «сохранить»
+      // ещё раз и заведёт дубль. Поэтому здесь отдельное сообщение.
+      try {
+        await _setBrand(productId, brand);
+      } catch (e) {
+        throw _dbFail(e, 'Товар сохранён, но марку записать не вышло');
+      }
+    } on Failure {
+      rethrow;
     } catch (e) {
       throw _dbFail(e, 'Не удалось сохранить товар');
     }
+  }
+
+  /// Марку ставим через RPC (миграция 0034), а не записью brand_id.
+  /// Таблица brands закрыта на запись: функция сама нормализует название,
+  /// найдёт уже существующую марку без учёта регистра и только потом
+  /// заведёт новую — иначе «Kerama Marazzi» быстро стало бы десятком
+  /// написаний, и фильтр по марке перестал бы работать.
+  Future<void> _setBrand(Object productId, String? brand) async {
+    await supabase.rpc('set_product_brand', params: {
+      'p_product': productId,
+      'p_brand': brand,
+    });
   }
 
   /// Поднять своё предложение в топ списков на [days] дней.
@@ -480,6 +504,7 @@ class SupplierCabinetRepository {
     double? packQty,
     int? warrantyMonths,
     List<String> attrs = const [],
+    String? brand,
   }) async {
     await _requireSession();
     try {
@@ -493,6 +518,8 @@ class SupplierCabinetRepository {
         'warranty_months': warrantyMonths,
         'attrs': attrs,
       }).eq('id', productId);
+
+      await _setBrand(int.tryParse(productId) ?? productId, brand);
     } catch (e) {
       throw _dbFail(e, 'Не удалось изменить товар');
     }
