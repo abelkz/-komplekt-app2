@@ -41,6 +41,23 @@ class CatalogRepository {
     }
   }
 
+  /// Все марки каталога — для подсказок в форме товара.
+  ///
+  /// Ошибку не поднимаем: подсказки удобство, а не условие работы формы.
+  /// Не загрузились — поставщик просто впишет марку руками.
+  Future<List<String>> brands() async {
+    try {
+      final rows = await supabase.from('brands').select('name').order('name');
+      return [
+        for (final m in rows)
+          if ((m['name'] as String?)?.trim().isNotEmpty == true)
+            (m['name'] as String).trim(),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Товары, у которых минимальная цена упала за последние [days] дней.
   ///
   /// Считает база (RPC `price_drops`, миграция 0027): таблица price_history
