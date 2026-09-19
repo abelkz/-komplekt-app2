@@ -25,11 +25,14 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
           bottom: const TabBar(isScrollable: true, tabs: [
+            // Сводка первой: с неё смотрят, что вообще происходит,
+            // а разбор заявок — уже следствие.
+            Tab(text: 'Сводка'),
             Tab(text: 'Поставщики'),
             Tab(text: 'Тарифы'),
             Tab(text: 'Буст'),
@@ -37,12 +40,474 @@ class AdminScreen extends ConsumerWidget {
           ]),
         ),
         body: const TabBarView(children: [
+          _StatsTab(),
           _SuppliersTab(),
           _PlansTab(),
           _BoostTab(),
           _ReportsTab(),
         ]),
       ),
+    );
+  }
+}
+
+// ──────────────────────────── Сводка ────────────────────────────
+
+/// Что происходит в приложении: регистрации, спрос, отдача поставщикам.
+///
+/// Считает база (миграция 0030) — здесь только показ. Важное про числа:
+/// события `app_events` пишутся начиная с версии 1.0.1, поэтому поиск и
+/// открытия категорий за длинный период выглядят заниженными относительно
+/// обращений, которые копятся с самого начала. Это не ошибка расчёта,
+/// и об этом честнее сказать прямо на экране, чем дать себя обмануть.
+class _StatsTab extends ConsumerWidget {
+  const _StatsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final days = ref.watch(statsPeriodProvider);
+    final overview = ref.watch(adminOverviewProvider);
+
+    void reload() {
+      ref.invalidate(adminOverviewProvider);
+      ref.invalidate(adminTopSearchesProvider);
+      ref.invalidate(adminTopCategoriesProvider);
+      ref.invalidate(adminSupplierStatsProvider);
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => reload(),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        children: [
+          _PeriodPicker(days: days),
+          const SizedBox(height: 14),
+          AsyncValueView<AdminOverview>(
+            value: overview,
+            onRetry: reload,
+            data: (o) => _OverviewGrid(o: o, days: days),
+          ),
+          const SizedBox(height: 22),
+          _CountedList(
+            title: 'ЧТО ИСКАЛИ',
+            note: 'По этим запросам видно, каких материалов не хватает '
+                'в каталоге.',
+            value: ref.watch(adminTopSearchesProvider),
+            onRetry: reload,
+            empty: 'За период никто не искал',
+          ),
+          const SizedBox(height: 22),
+          _CountedList(
+            title: 'КАТЕГОРИИ',
+            note: 'Какие разделы открывают, а какие лежат мёртвым грузом.',
+            value: ref.watch(adminTopCategoriesProvider),
+            onRetry: reload,
+            empty: 'За период категории не открывали',
+          ),
+          const SizedBox(height: 22),
+          _SupplierStatsList(
+            value: ref.watch(adminSupplierStatsProvider),
+            onRetry: reload,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodPicker extends ConsumerWidget {
+  const _PeriodPicker({required this.days});
+  final int days;
+
+  static const _options = {7: 'Неделя', 30: 'Месяц', 90: '3 месяца', 365: 'Год'};
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    return Row(
+      children: [
+        for (final e in _options.entries) ...[
+          InkWell(
+            onTap: () => ref.read(statsPeriodProvider.notifier).set(e.key),
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: days == e.key ? c.accent : c.field,
+                border: Border.all(color: days == e.key ? c.accent : c.line),
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+              ),
+              child: Text(
+                e.value,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: days == e.key ? AppColors.brandInk : c.gray,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _OverviewGrid extends StatelessWidget {
+  const _OverviewGrid({required this.o, required this.days});
+  final AdminOverview o;
+  final int days;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Expanded(
+            child: _Stat(
+              label: 'Всего людей',
+              value: '${o.usersTotal}',
+              hint: '+${o.usersNew} за период',
+              accent: true,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _Stat(
+              label: 'Поставщиков',
+              value: '${o.suppliersTotal}',
+              hint: o.suppliersPending > 0
+                  ? '${o.suppliersPending} ждут проверки'
+                  : 'все проверены',
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: _Stat(
+              label: 'Обращения',
+              value: '${o.contacts}',
+              hint: 'звонки и WhatsApp',
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _Stat(
+              label: 'Каталог',
+              value: '${o.productsTotal}',
+              hint: '${o.offersTotal} цен от поставщиков',
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: _Stat(
+              label: 'Открыли товар',
+              value: '${o.productViews}',
+              hint: '${o.categoryOpens} открытий категорий',
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _Stat(
+              label: 'Поисков',
+              value: '${o.searches}',
+              hint: '${o.favoritesTotal} в избранном',
+            ),
+          ),
+        ]),
+        if (o.paidTotal > 0) ...[
+          const SizedBox(height: 10),
+          _Stat(
+            label: 'Оплачено за период',
+            value: Formatters.price(o.paidTotal),
+            hint: 'только успешные платежи',
+            accent: true,
+          ),
+        ],
+        const SizedBox(height: 10),
+        // Без этой оговорки числа читаются неверно: обращения копятся
+        // с самого начала, а поиск и категории — только с версии 1.0.1.
+        Text(
+          'Поиск, открытия товаров и категорий считаются с версии 1.0.1. '
+          'Обращения к поставщикам — за всё время работы.',
+          style: TextStyle(fontSize: 11, color: c.faint, height: 1.35),
+        ),
+      ],
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({
+    required this.label,
+    required this.value,
+    this.hint,
+    this.accent = false,
+  });
+
+  final String label;
+  final String value;
+  final String? hint;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border.all(color: accent ? c.accent : c.line),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(),
+              style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: c.faint)),
+          const SizedBox(height: 8),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: accent ? c.accent : c.ink)),
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(hint!,
+                maxLines: 2,
+                style: TextStyle(fontSize: 11, color: c.gray)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Список «строка — число» с полосой относительной величины.
+class _CountedList extends StatelessWidget {
+  const _CountedList({
+    required this.title,
+    required this.value,
+    required this.onRetry,
+    required this.empty,
+    this.note,
+  });
+
+  final String title;
+  final AsyncValue<List<CountedRow>> value;
+  final VoidCallback onRetry;
+  final String empty;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 1.4,
+                fontWeight: FontWeight.w700,
+                color: c.faint)),
+        if (note != null) ...[
+          const SizedBox(height: 4),
+          Text(note!, style: TextStyle(fontSize: 11, color: c.gray)),
+        ],
+        const SizedBox(height: 10),
+        AsyncValueView<List<CountedRow>>(
+          value: value,
+          onRetry: onRetry,
+          isEmpty: (d) => d.isEmpty,
+          empty: _Empty(empty),
+          data: (rows) {
+            final max = rows.first.n.clamp(1, 1 << 30);
+            return Column(
+              children: [
+                for (final r in rows)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(r.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 13, color: c.ink)),
+                              const SizedBox(height: 4),
+                              // Полоса вместо графика: сравнивать строки между
+                              // собой глазами так быстрее, чем читать числа.
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(2),
+                                child: LinearProgressIndicator(
+                                  value: r.n / max,
+                                  minHeight: 4,
+                                  backgroundColor: c.field,
+                                  valueColor:
+                                      AlwaysStoppedAnimation(c.accent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text('${r.n}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: c.ink)),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// Поставщики по отдаче: у кого звонят, а кто завёл компанию и забыл.
+class _SupplierStatsList extends StatelessWidget {
+  const _SupplierStatsList({required this.value, required this.onRetry});
+
+  final AsyncValue<List<SupplierRow>> value;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('ПОСТАВЩИКИ',
+            style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 1.4,
+                fontWeight: FontWeight.w700,
+                color: c.faint)),
+        const SizedBox(height: 4),
+        Text('Сверху те, кому звонят. Просмотр можно накрутить, звонок — нет.',
+            style: TextStyle(fontSize: 11, color: c.gray)),
+        const SizedBox(height: 10),
+        AsyncValueView<List<SupplierRow>>(
+          value: value,
+          onRetry: onRetry,
+          isEmpty: (d) => d.isEmpty,
+          empty: const _Empty('Поставщиков пока нет'),
+          data: (rows) => Column(
+            children: [for (final s in rows) _SupplierStatCard(s: s)],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SupplierStatCard extends StatelessWidget {
+  const _SupplierStatCard({required this.s});
+  final SupplierRow s;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border.all(color: c.line),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(s.name.isEmpty ? 'без названия' : s.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+              ),
+              if (s.verified)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Icon(Icons.verified, size: 15, color: c.accent),
+                ),
+              if (s.isPro)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text('PRO',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: c.accent)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            [
+              if (s.city.isNotEmpty) s.city,
+              '${s.products} товаров',
+              '${s.offers} цен',
+            ].join(' · '),
+            style: TextStyle(fontSize: 11, color: c.faint),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _mini(c, Icons.visibility_outlined, '${s.views}', 'просмотров'),
+              const SizedBox(width: 16),
+              _mini(c, Icons.call_outlined, '${s.contacts}', 'обращений'),
+            ],
+          ),
+          // Дата последней правки прайса — главный признак живой компании.
+          if (s.lastPriceAt != null) ...[
+            const SizedBox(height: 6),
+            Text('Прайс обновлён ${Formatters.relativeDate(s.lastPriceAt)}',
+                style: TextStyle(fontSize: 11, color: c.gray)),
+          ] else ...[
+            const SizedBox(height: 6),
+            Text('Цены ни разу не обновлялись',
+                style: TextStyle(fontSize: 11, color: c.red)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _mini(AppColors c, IconData icon, String value, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: c.faint),
+        const SizedBox(width: 5),
+        Text(value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 11, color: c.faint)),
+      ],
     );
   }
 }

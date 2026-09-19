@@ -23,6 +23,35 @@ final boostOrdersProvider = FutureProvider<List<SubRequest>>(
 final contentReportsProvider = FutureProvider<List<ContentReport>>(
     (ref) => ref.read(adminRepositoryProvider).reports());
 
+// ─────────────────────────── Статистика ───────────────────────────
+
+/// За сколько дней смотрим сводку. Общий для всей вкладки: переключил
+/// период — пересчитались сразу все панели, а не каждая по отдельности.
+class StatsPeriodNotifier extends Notifier<int> {
+  @override
+  int build() => 30;
+  void set(int days) => state = days;
+}
+
+final statsPeriodProvider =
+    NotifierProvider<StatsPeriodNotifier, int>(StatsPeriodNotifier.new);
+
+final adminOverviewProvider = FutureProvider<AdminOverview>((ref) => ref
+    .read(adminRepositoryProvider)
+    .overview(days: ref.watch(statsPeriodProvider)));
+
+final adminTopSearchesProvider = FutureProvider<List<CountedRow>>((ref) => ref
+    .read(adminRepositoryProvider)
+    .topSearches(days: ref.watch(statsPeriodProvider)));
+
+final adminTopCategoriesProvider = FutureProvider<List<CountedRow>>((ref) => ref
+    .read(adminRepositoryProvider)
+    .topCategories(days: ref.watch(statsPeriodProvider)));
+
+final adminSupplierStatsProvider = FutureProvider<List<SupplierRow>>((ref) => ref
+    .read(adminRepositoryProvider)
+    .supplierStats(days: ref.watch(statsPeriodProvider)));
+
 /// Сколько дел ждёт решения — число на вкладке профиля.
 final adminPendingCountProvider = Provider<int>((ref) {
   final suppliers = ref.watch(supplierApplicationsProvider).valueOrNull ?? [];
