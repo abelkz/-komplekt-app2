@@ -26,6 +26,56 @@ Future<double?> showQtyCalculator(
   ));
 }
 
+/// Чистый расчёт расхода — отдельно от экрана, чтобы его можно было
+/// проверить тестами: ошибка здесь стоит денег на объекте.
+class QtyCalc {
+  const QtyCalc({
+    required this.base,
+    required this.sparePercent,
+    this.packQty,
+    this.unit = 'шт',
+  });
+
+  /// Сколько нужно по объекту, до запаса.
+  final double base;
+
+  /// Запас на подрезку в процентах.
+  final int sparePercent;
+
+  /// Сколько единиц в упаковке. null или не больше нуля — фасовки нет.
+  final double? packQty;
+
+  final String unit;
+
+  /// В упаковке меньше или ровно ноль — значит фасовки по сути нет
+  /// (поставщик вписал мусор), считаем без коробок.
+  double? get pack => (packQty == null || packQty! <= 0) ? null : packQty;
+
+  /// Сколько выходит с запасом, до округления по упаковкам.
+  double get withSpare => base * (1 + sparePercent / 100);
+
+  /// Сколько упаковок придётся купить: только вверх — половину коробки
+  /// плитки никто не продаст.
+  int? get packs {
+    final p = pack;
+    if (p == null) return null;
+    final raw = withSpare / p;
+    // Плавающая точка: 14.4 / 1.44 выходит не ровно 10, а 10.000000000000002,
+    // и честное округление вверх приписало бы лишнюю коробку на ровном месте.
+    final nearest = raw.roundToDouble();
+    if ((raw - nearest).abs() < 1e-9) return nearest.toInt();
+    return raw.ceil();
+  }
+
+  /// Итог, который уедет в смету.
+  double get total {
+    final p = pack, n = packs;
+    if (p != null && n != null) return n * p;
+    // Штучный товар дробным не бывает — округляем вверх.
+    return unit == 'шт' ? withSpare.ceilToDouble() : withSpare;
+  }
+}
+
 class _QtyCalculatorPage extends StatefulWidget {
   const _QtyCalculatorPage({required this.product, this.initial});
 
@@ -63,51 +113,34 @@ class _QtyCalculatorPageState extends State<_QtyCalculatorPage> {
     return v;
   }
 
-  /// Сколько выходит с запасом, до округления по упаковкам.
-  double? get _withSpare {
+  /// null, пока в поле не введено осмысленное число.
+  QtyCalc? get _calc {
     final b = _base;
-    return b == null ? null : b * (1 + _spare / 100);
-  }
-
-  /// В упаковке меньше единицы — значит фасовки по сути нет
-  /// (поставщик вписал 0 или мусор), считаем без коробок.
-  double? get _pack {
-    final p = widget.product.packQty;
-    if (p == null || p <= 0) return null;
-    return p;
-  }
-
-  /// Сколько упаковок придётся купить: только вверх — половину коробки
-  /// плитки никто не продаст.
-  int? get _packs {
-    final need = _withSpare, pack = _pack;
-    if (need == null || pack == null) return null;
-    return (need / pack).ceil();
-  }
-
-  /// Итог, который уедет в смету.
-  double? get _total {
-    final packs = _packs, pack = _pack;
-    if (packs != null && pack != null) return packs * pack;
-    final need = _withSpare;
-    if (need == null) return null;
-    // Штучный товар дробным не бывает — округляем вверх.
-    return widget.product.unit == 'шт' ? need.ceilToDouble() : need;
+    if (b == null) return null;
+    return QtyCalc(
+      base: b,
+      sparePercent: _spare,
+      packQty: widget.product.packQty,
+      unit: widget.product.unit,
+    );
   }
 
   void _apply() {
-    final t = _total;
-    if (t == null) return;
-    Navigator.pop(context, t);
+    final c = _calc;
+    if (c == null) return;
+    Navigator.pop(context, c.total);
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final p = widget.product;
-    final total = _total;
-    final packs = _packs;
-    final pack = _pack;
+    final calc = _calc;
+    final total = calc?.total;
+    final packs = calc?.packs;
+    // Фасовку показываем и до ввода числа: строка «Упаковок по 1.44 м²»
+    // сразу объясняет, почему итог не совпадёт с введённой площадью.
+    final pack = (p.packQty == null || p.packQty! <= 0) ? null : p.packQty;
     final best = p.bestOffer;
 
     return Scaffold(
@@ -164,7 +197,7 @@ class _QtyCalculatorPageState extends State<_QtyCalculatorPage> {
                 ),
                 _Line(
                   label: 'С запасом $_spare %',
-                  value: _qtyText(_withSpare, p.unit),
+                  value: _qtyText(calc?.withSpare, p.unit),
                 ),
                 if (pack != null)
                   _Line(
