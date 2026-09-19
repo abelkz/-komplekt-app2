@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/formatters.dart';
 import '../catalog_providers.dart';
 
 /// Нижний лист фильтров: город · только в наличии · сортировка.
@@ -21,8 +23,27 @@ class _FiltersSheet extends ConsumerStatefulWidget {
 
 class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
   late CatalogFilters _draft = ref.read(filtersProvider);
+  late final TextEditingController _cap = TextEditingController(
+      text: _draft.maxPrice == null
+          ? ''
+          : Formatters.number(_draft.maxPrice!));
 
   static const _cities = ['Все города', 'Астана', 'Алматы', 'Шымкент'];
+
+  @override
+  void dispose() {
+    _cap.dispose();
+    super.dispose();
+  }
+
+  /// Пустое поле — «без потолка». Ноль и мусор трактуем так же: отсекать
+  /// вообще всё, что дороже нуля, никто не просит.
+  CatalogFilters get _applied {
+    final raw = _cap.text.trim().replaceAll(',', '.').replaceAll(' ', '');
+    final v = double.tryParse(raw);
+    if (v == null || v <= 0) return _draft.copyWith(clearMaxPrice: true);
+    return _draft.copyWith(maxPrice: v);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +55,10 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
         top: 22,
         bottom: MediaQuery.of(context).viewInsets.bottom + 28,
       ),
-      child: Column(
+      // С полем ввода лист стал выше, и на маленьком экране с поднятой
+      // клавиатурой он упирался в верх — поэтому прокрутка.
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -55,6 +79,22 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
                   onTap: () => setState(() => _draft = _draft.copyWith(city: city)),
                 ),
             ],
+          ),
+          const SizedBox(height: 18),
+
+          _label('Потолок цены'),
+          TextField(
+            controller: _cap,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+            ],
+            decoration: const InputDecoration(
+              hintText: 'без ограничения',
+              prefixText: 'до ',
+              suffixText: '₸ за единицу',
+              isDense: true,
+            ),
           ),
           const SizedBox(height: 18),
 
@@ -113,7 +153,7 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
               const Spacer(),
               FilledButton(
                 onPressed: () {
-                  ref.read(filtersProvider.notifier).apply(_draft);
+                  ref.read(filtersProvider.notifier).apply(_applied);
                   Navigator.pop(context);
                 },
                 child: const Text('Показать результаты'),
@@ -121,6 +161,7 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
             ],
           ),
         ],
+        ),
       ),
     );
   }
