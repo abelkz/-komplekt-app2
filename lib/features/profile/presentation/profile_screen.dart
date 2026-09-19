@@ -3,6 +3,7 @@ import 'dart:math' show max;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/config/build_info.dart';
 import '../../../core/providers/data_refresh.dart';
@@ -13,6 +14,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
+import '../../../core/widgets/avatar.dart';
 import '../../../core/widgets/sign_in_required.dart';
 import '../../admin/presentation/admin_providers.dart';
 import '../../auth/domain/app_user.dart';
@@ -47,7 +49,6 @@ class ProfileScreen extends ConsumerWidget {
     final name = profile.valueOrNull?.fullName.isNotEmpty == true
         ? profile.valueOrNull!.fullName
         : 'Пользователь';
-    final initials = profile.valueOrNull?.initials ?? 'П';
 
     return Scaffold(
       body: SafeArea(
@@ -88,7 +89,6 @@ class ProfileScreen extends ConsumerWidget {
             // действительно знает.
             _IdentityCard(
               name: name,
-              initials: initials,
               phone: profile.valueOrNull?.phone,
               role: _roleLine(profile.valueOrNull, isAdmin, settings.city),
               city: settings.city,
@@ -644,11 +644,125 @@ class _SquareAction extends StatelessWidget {
   }
 }
 
+/// Фото профиля: показ, замена и удаление.
+///
+/// Снимок — единственное на этом экране, что человек про себя задаёт сам,
+/// поэтому кнопки прячем под сам аватар: отдельная кнопка «загрузить фото»
+/// заняла бы строку ради действия, которое делают один раз.
+class _AvatarPicker extends ConsumerStatefulWidget {
+  const _AvatarPicker({required this.name});
+
+  final String name;
+
+  @override
+  ConsumerState<_AvatarPicker> createState() => _AvatarPickerState();
+}
+
+class _AvatarPickerState extends ConsumerState<_AvatarPicker> {
+  bool _busy = false;
+
+  Future<void> _pick() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        // Аватарку показываем максимум 56 точками, но в галерее у человека
+        // снимки по 4 МБ. Ужимаем до загрузки: на мобильном интернете
+        // разница между 4 МБ и 100 КБ — это разница между «сразу» и «никогда».
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (picked == null) {
+        setState(() => _busy = false);
+        return;
+      }
+      final bytes = await picked.readAsBytes();
+      final ext = picked.name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+      final url =
+          await ref.read(storageRepositoryProvider).uploadAvatar(bytes, ext: ext);
+      await ref.read(authRepositoryProvider).updateAvatar(url);
+      ref.invalidate(myProfileProvider);
+      if (!mounted) return;
+      setState(() => _busy = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final t = e.toString();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content:
+                Text(t.startsWith('Failure: ') ? t.substring(9) : 'Не вышло')));
+    }
+  }
+
+  Future<void> _remove() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await ref.read(authRepositoryProvider).updateAvatar(null);
+      ref.invalidate(myProfileProvider);
+    } catch (e) {
+      final t = e.toString();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content:
+                Text(t.startsWith('Failure: ') ? t.substring(9) : 'Не вышло')));
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final url = ref.watch(myProfileProvider).valueOrNull?.avatarUrl;
+    final hasPhoto = url != null && url.isNotEmpty;
+
+    return GestureDetector(
+      onTap: _busy ? null : _pick,
+      // Долгое нажатие снимает фото. Отдельная корзина рядом с аватаркой
+      // мозолила бы глаза ради действия, которое делают редко.
+      onLongPress: _busy || !hasPhoto ? null : _remove,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Avatar(name: widget.name, url: url, size: 56),
+          if (_busy)
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
+            )
+          else if (!hasPhoto)
+            // Значок камеры только когда фото нет: иначе он закрывал бы
+            // сам снимок, ради которого всё и делалось.
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: c.card,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: c.line),
+                ),
+                child: Icon(Icons.photo_camera_outlined,
+                    size: 11, color: c.gray),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Карточка пользователя: монограмма, имя, телефон, роль и выбор города.
 class _IdentityCard extends ConsumerWidget {
   const _IdentityCard({
     required this.name,
-    required this.initials,
     required this.phone,
     required this.role,
     required this.city,
@@ -656,7 +770,6 @@ class _IdentityCard extends ConsumerWidget {
   });
 
   final String name;
-  final String initials;
   final String? phone;
   final String role;
   final String city;
@@ -697,19 +810,9 @@ class _IdentityCard extends ConsumerWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Монограмма прямоугольная со скруглением, а не круг:
-                // круглые аватары — язык соцсетей, здесь учётная запись.
-                Container(
-                  width: 56,
-                  height: 56,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: c.orangeSoft,
-                    borderRadius: BorderRadius.circular(AppRadii.md),
-                  ),
-                  child: Text(initials,
-                      style: AppTypography.headlineMd(color: c.accent)),
-                ),
+                // Форма прямоугольная со скруглением, а не круг: круглые
+                // аватары — язык соцсетей, здесь учётная запись.
+                _AvatarPicker(name: name),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
