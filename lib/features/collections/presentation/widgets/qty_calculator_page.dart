@@ -91,13 +91,17 @@ class _QtyCalculatorPageState extends State<_QtyCalculatorPage> {
 
   /// Запас на подрезку в процентах. 10 % — то, что кладут по умолчанию
   /// при прямой раскладке; для диагонали берут 15 %.
-  int _spare = 10;
+  late int _spare;
 
   @override
   void initState() {
     super.initState();
     final v = widget.initial;
     _need = TextEditingController(text: v == null ? '' : Formatters.number(v));
+    // Позицию уже считали — в поле стоит итог, а не площадь объекта.
+    // Накинуть на него ещё 10 % значит тихо завысить смету при каждом
+    // открытии расчёта. Поэтому при правке начинаем с нуля.
+    _spare = v == null ? 10 : 0;
   }
 
   @override
