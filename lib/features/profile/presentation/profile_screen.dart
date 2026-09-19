@@ -1099,9 +1099,28 @@ class _PushStatusLineState extends State<_PushStatusLine> {
       future: _future,
       builder: (context, snap) {
         final status = snap.data;
-        // Пока проверяем — молчим: мигнуть предупреждением, которое через
-        // полсекунды сменится на «всё хорошо», хуже, чем не показать ничего.
-        if (status == null) return const SizedBox(height: 18);
+        // Пока проверяем — не молчим, но и не пугаем. Раньше здесь была
+        // пустая распорка: замысел был не мигать тревогой, которая через
+        // полсекунды сменится на «всё хорошо». Но проверка выросла до
+        // сорока секунд (ждём APNs-токен, потом FCM-токен), и вместо
+        // «ещё считаю» человек видел пустое место — то есть решал, что
+        // строка пропала или сломалась.
+        if (status == null) {
+          return Row(
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 2, color: c.gray),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Проверяю доставку уведомлений…',
+                style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
+              ),
+            ],
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
