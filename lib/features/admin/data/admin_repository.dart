@@ -638,6 +638,20 @@ class AdminRepository {
     }
   }
 
+  /// Завести марку заранее, без товара (миграция 0037). Нужна, чтобы
+  /// положить в подсказки правильное написание до того, как поставщик
+  /// изобретёт своё.
+  Future<void> createBrand(String name) async {
+    try {
+      await supabase.rpc('admin_create_brand', params: {'p_name': name});
+    } catch (e) {
+      if (e.toString().contains('admin_create_brand')) {
+        throw const Failure('Функция ещё не создана — примените миграцию 0037');
+      }
+      throw mapError(e, fallback: 'Не удалось завести марку');
+    }
+  }
+
   Future<void> renameBrand(int id, String name) async {
     try {
       await supabase
