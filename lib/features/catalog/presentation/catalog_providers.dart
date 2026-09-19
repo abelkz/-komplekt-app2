@@ -22,19 +22,45 @@ class CatalogFilters {
     this.city = 'Все города',
     this.inStock = false,
     this.sort = SortBy.priceAsc,
+    this.maxPrice,
+    this.brand,
   });
 
   final String city;
   final bool inStock;
   final SortBy sort;
 
-  int get activeCount => (city != 'Все города' ? 1 : 0) + (inStock ? 1 : 0);
+  /// Потолок цены за единицу. null — без ограничения. Бюджет на материал
+  /// задают сверху («плитка до 5 000 за м²»), а не диапазоном.
+  final double? maxPrice;
 
-  CatalogFilters copyWith({String? city, bool? inStock, SortBy? sort}) =>
+  /// Марка. null — все. Сравнивается по названию: у товара марка приезжает
+  /// строкой из brands(name), своего идентификатора в карточке нет.
+  final String? brand;
+
+  int get activeCount =>
+      (city != 'Все города' ? 1 : 0) +
+      (inStock ? 1 : 0) +
+      (maxPrice != null ? 1 : 0) +
+      (brand != null ? 1 : 0);
+
+  /// Сброс необязательного фильтра отдельными флагами: через `null`
+  /// в copyWith «убрать потолок цены» неотличимо от «не трогать его».
+  CatalogFilters copyWith({
+    String? city,
+    bool? inStock,
+    SortBy? sort,
+    double? maxPrice,
+    String? brand,
+    bool clearMaxPrice = false,
+    bool clearBrand = false,
+  }) =>
       CatalogFilters(
         city: city ?? this.city,
         inStock: inStock ?? this.inStock,
         sort: sort ?? this.sort,
+        maxPrice: clearMaxPrice ? null : (maxPrice ?? this.maxPrice),
+        brand: clearBrand ? null : (brand ?? this.brand),
       );
 }
 
@@ -54,11 +80,19 @@ final filtersProvider =
 List<Product> applyFilters(List<Product> products, CatalogFilters f) {
   final result = <Product>[];
   for (final p in products) {
+    // Марка — свойство карточки, а не предложения: отсекаем товар целиком.
+    final brand = f.brand;
+    if (brand != null && p.brand.toLowerCase() != brand.toLowerCase()) continue;
+
     var offers = p.offers;
     if (f.city != 'Все города') {
       offers = offers.where((o) => o.city == f.city).toList();
     }
     if (f.inStock) offers = offers.where((o) => o.inStock).toList();
+    // Потолок применяем к предложениям, а не к минимальной цене товара:
+    // иначе в карточке остались бы строки дороже заданного бюджета.
+    final cap = f.maxPrice;
+    if (cap != null) offers = offers.where((o) => o.price <= cap).toList();
     if (offers.isEmpty) continue;
     result.add(Product(
       id: p.id,
@@ -72,6 +106,13 @@ List<Product> applyFilters(List<Product> products, CatalogFilters f) {
       rating: p.rating,
       images: p.images,
       offers: offers,
+      // Пересобирая товар ради отфильтрованных предложений, легко потерять
+      // поля, добавленные позже. Фасовка, гарантия и характеристики уже
+      // приезжают из базы — и без этих трёх строк они исчезали по дороге
+      // в каталог и поиск, а карточка молча теряла характеристики.
+      packQty: p.packQty,
+      warrantyMonths: p.warrantyMonths,
+      attrs: p.attrs,
     ));
   }
   result.sort((a, b) {
@@ -147,19 +188,52 @@ final priceDropsProvider = FutureProvider<List<PriceDrop>>((ref) async {
   }
 });
 
+/// Товары категории как они есть в базе, без фильтров.
+///
+/// Отделено от результатов нарочно: фильтры применяются на клиенте, и пока
+/// запрос к базе сидел в том же провайдере, каждое переключение чипа
+/// перезапрашивало всю категорию по сети. Отсюда же берётся список марок
+/// для чипов — по отфильтрованному списку он схлопывался бы до одной марки
+/// сразу после первого выбора.
+final categoryProductsProvider =
+    FutureProvider.family<List<Product>, String>((ref, slug) {
+  return ref.watch(catalogRepositoryProvider).byCategory(slug);
+});
+
 /// Товары категории с применёнными фильтрами.
 final catalogResultsProvider =
     FutureProvider.family<List<Product>, String>((ref, slug) async {
-  final products = await ref.watch(catalogRepositoryProvider).byCategory(slug);
+  final products = await ref.watch(categoryProductsProvider(slug).future);
   return applyFilters(products, ref.watch(filtersProvider));
+});
+
+/// Найденные товары без фильтров.
+final searchProductsProvider =
+    FutureProvider.family<List<Product>, String>((ref, query) {
+  return ref.watch(catalogRepositoryProvider).search(query);
 });
 
 /// Результаты поиска по строке запроса.
 final searchResultsProvider =
     FutureProvider.family<List<Product>, String>((ref, query) async {
-  final products = await ref.watch(catalogRepositoryProvider).search(query);
+  final products = await ref.watch(searchProductsProvider(query).future);
   return applyFilters(products, ref.watch(filtersProvider));
 });
+
+/// Марки, которые вообще встречаются в этом наборе товаров.
+///
+/// Чипы марок показываем, только если марок больше одной: в категории
+/// с единственным брендом такой чип ничего не фильтрует и лишь занимает
+/// строку.
+List<String> brandsOf(List<Product> products) {
+  final set = <String>{};
+  for (final p in products) {
+    if (p.brand.trim().isNotEmpty) set.add(p.brand.trim());
+  }
+  if (set.length < 2) return const [];
+  final list = set.toList()..sort();
+  return list;
+}
 
 /// Недавние поиски (персистятся в SharedPreferences).
 class RecentSearchesNotifier extends Notifier<List<String>> {

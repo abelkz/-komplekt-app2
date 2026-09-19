@@ -11,6 +11,7 @@ import '../domain/product.dart';
 import 'catalog_providers.dart';
 import 'widgets/filters_sheet.dart';
 import 'widgets/product_grid_card.dart';
+import 'widgets/quick_filters.dart';
 
 /// Результаты поиска по строке запроса (тот же UI, что и каталог).
 class SearchResultsScreen extends ConsumerWidget {
@@ -37,7 +38,7 @@ class SearchResultsScreen extends ConsumerWidget {
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             Text(
               results.maybeWhen(
-                data: (d) => '${d.length} товаров',
+                data: (d) => '${d.length} ${productsPlural(d.length)}',
                 orElse: () => 'поиск…',
               ),
               style: TextStyle(fontSize: 11, color: c.gray),
@@ -72,7 +73,22 @@ class SearchResultsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: AsyncValueView<List<Product>>(
+      body: Column(
+        children: [
+          QuickFilters(
+            brands: brandsOf(
+                ref.watch(searchProductsProvider(query)).valueOrNull ??
+                    const []),
+          ),
+          Expanded(child: _results(context, ref, results)),
+        ],
+      ),
+    );
+  }
+
+  Widget _results(
+      BuildContext context, WidgetRef ref, AsyncValue<List<Product>> results) {
+    return AsyncValueView<List<Product>>(
         value: results,
         loading: const SkeletonList(),
         onRetry: () => ref.invalidate(searchResultsProvider(query)),
@@ -133,8 +149,6 @@ class SearchResultsScreen extends ConsumerWidget {
               ),
             ],
           );
-        },
-      ),
-    );
+        });
   }
 }
