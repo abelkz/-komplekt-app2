@@ -16,6 +16,7 @@ import '../../catalog/domain/category.dart';
 import '../../catalog/domain/price_drop.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
+import '../../collections/presentation/collections_providers.dart';
 import '../../notifications/presentation/notifications_providers.dart';
 
 /// «10 разделов», «1 раздел», «2 раздела» — русские числительные.
@@ -108,6 +109,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
     final drops = ref.watch(priceDropsProvider).valueOrNull ?? const [];
+    final city = ref.watch(settingsProvider.select((s) => s.city));
+    final specCount = ref.watch(collectionsItemCountProvider);
     final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
@@ -120,18 +123,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
           child: CustomScrollView(
             slivers: [
-              // ── Шапка: логотип + колокол + тема ──
+              // ── Шапка: марка, город, колокол, тема ──
+              //
+              // «КОМПЛЕКТ» капсом и кириллицей, а не «Komplekt»: приложение
+              // русскоязычное, и латиница в шапке выглядела чужой наклейкой.
+              // Рядом город — он определяет весь каталог и цены, человек
+              // должен видеть, в каком городе смотрит, не открывая профиль.
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Row(
                     children: [
-                      Icon(Icons.architecture_rounded,
-                          color: c.orange, size: 24),
-                      const SizedBox(width: 8),
-                      Text('Komplekt',
+                      Text('КОМПЛЕКТ',
                           style: AppTypography.unbounded(
-                              size: 20, color: c.orange)),
+                              size: 20, color: c.ink, letterSpacing: 0.5)),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: c.orangeSoft,
+                          borderRadius: BorderRadius.circular(AppRadii.xs),
+                        ),
+                        child: Text(city.toUpperCase(),
+                            style: AppTypography.sectionLabel(color: c.accent)
+                                .copyWith(fontSize: 10)),
+                      ),
                       const Spacer(),
                       KeyedSubtree(
                         key: TourKeys.bell,
@@ -257,12 +274,83 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
 
+              // ── Сводная смета ──
+              // Короткий путь к тому, ради чего прораб и открывает
+              // приложение: собранные позиции с итогом. Показываем, только
+              // когда в подборках что-то есть — пустая плашка «сравнить 0
+              // позиций» ничего не предлагает.
+              if (specCount > 0)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                    child: _SpecStrip(count: specCount),
+                  ),
+                ),
+
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+/// Полоса «Сводная смета»: сколько позиций собрано и переход в подборки.
+class _SpecStrip extends StatelessWidget {
+  const _SpecStrip({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Material(
+      color: c.card,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // go, а не push: подборки — вкладка, и переходить туда надо
+        // переключением, иначе экран ляжет поверх нижней навигации.
+        onTap: () => context.go(Routes.collections),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            border: Border.all(color: c.line),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.request_quote_outlined, size: 22, color: c.accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Сводная смета',
+                        style: AppTypography.titleMd(color: c.ink)),
+                    const SizedBox(height: 2),
+                    Text('$count ${_positions(count)} по минимальным ценам',
+                        style: AppTypography.bodySm(color: c.gray)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('Открыть',
+                  style: AppTypography.sectionLabel(color: c.accent)),
+              Icon(Icons.chevron_right_rounded, size: 18, color: c.accent),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _positions(int n) {
+    final m = n % 10, h = n % 100;
+    if (m == 1 && h != 11) return 'позиция';
+    if (m >= 2 && m <= 4 && (h < 10 || h >= 20)) return 'позиции';
+    return 'позиций';
   }
 }
 
