@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/analytics/analytics.dart';
@@ -124,6 +125,17 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
             style: AppTypography.mono(
                 size: 11, weight: FontWeight.w700, color: c.ink)),
         actions: [
+          // «Поделиться» из макета: прораб пересылает образец заказчику
+          // в мессенджер, и до сих пор для этого приходилось слать скриншот.
+          IconButton(
+            tooltip: 'Поделиться',
+            icon: Icon(Icons.ios_share, color: c.ink),
+            onPressed: () {
+              final p = product.valueOrNull;
+              if (p == null) return;
+              Share.share(_shareText(p));
+            },
+          ),
           IconButton(
             icon: Icon(
               isFav ? Icons.favorite : Icons.favorite_border,
@@ -1106,10 +1118,18 @@ class _SpecsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // Фасовка и гарантия (миграция 0029) — то, из-за чего смета расходится
+    // с чеком: считают в м², а продают коробками, и гарантию спрашивают
+    // до покупки, а не после.
+    final pack = product.packQty;
     final rows = <MapEntry<String, String>>[
       if (product.brand.isNotEmpty) MapEntry('Бренд', product.brand),
       if (product.sku.isNotEmpty) MapEntry('Артикул', product.sku),
       if (product.unit.isNotEmpty) MapEntry('Единица', product.unit),
+      if (pack != null && pack > 0)
+        MapEntry('В упаковке', '${Formatters.number(pack)} ${product.unit}'),
+      if (product.warrantyLabel != null)
+        MapEntry('Гарантия', product.warrantyLabel!),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
 
@@ -1156,6 +1176,26 @@ class _SpecsCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Текст образца для пересылки.
+///
+/// Ссылку не подставляем: публичной страницы товара у приложения нет,
+/// и класть в сообщение заказчику адрес, который не откроется, хуже,
+/// чем не класть ничего. Здесь только то, что проверяется глазами —
+/// марка, артикул и лучшая цена с именем поставщика.
+String _shareText(Product p) {
+  final best = p.bestOffer;
+  return [
+    [if (p.brand.isNotEmpty) p.brand.toUpperCase(), p.name].join(' · '),
+    if (p.sku.isNotEmpty) 'Артикул: ${p.sku}',
+    if (best != null)
+      'От ${Formatters.price(best.price)}/${p.unit}'
+          '${best.supplierName.isEmpty ? '' : ' — ${best.supplierName}'}',
+    if (best != null && p.offersCount > 1)
+      'Всего предложений: ${p.offersCount}',
+    'Сравнение цен — КОМПЛЕКТ',
+  ].join('\n');
 }
 
 void _snack(BuildContext context, String text) {
