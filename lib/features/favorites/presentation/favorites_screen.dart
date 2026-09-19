@@ -11,6 +11,7 @@ import '../../../core/widgets/sign_in_required.dart';
 import '../../../core/widgets/skeletons.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../catalog/domain/category.dart';
+import '../../catalog/domain/offer.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../catalog/presentation/widgets/product_thumb.dart';
@@ -660,7 +661,14 @@ class _FavoriteRow extends ConsumerWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              inStock ? '● В наличии' : '○ Под заказ',
+                              // Срок поставки показываем, только если
+                              // поставщик его указал: по срокам планируют
+                              // работы на объекте, выдумывать нельзя.
+                              inStock
+                                  ? '● В наличии'
+                                  : best?.leadTimeLabel == null
+                                      ? '○ Под заказ'
+                                      : '○ Под заказ (${best!.leadTimeLabel})',
                               style: AppTypography.bodySm(
                                   color: inStock ? c.green : c.gray),
                             ),
@@ -683,14 +691,11 @@ class _FavoriteRow extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
             child: Row(
               children: [
-                Icon(Icons.update_rounded, size: 15, color: c.faint),
+                Icon(_footNote(p, best).$1, size: 15, color: c.faint),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    best?.priceUpdatedAt == null
-                        ? 'цена без изменений'
-                        : 'цена обновлена '
-                            '${Formatters.relativeDate(best!.priceUpdatedAt)}',
+                    _footNote(p, best).$2,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.data(color: c.faint),
@@ -710,6 +715,39 @@ class _FavoriteRow extends ConsumerWidget {
     if (m == 1 && h != 11) return 'продавец';
     if (m >= 2 && m <= 4 && (h < 10 || h >= 20)) return 'продавца';
     return 'продавцов';
+  }
+
+  /// Что показать в служебной полосе карточки.
+  ///
+  /// Порядок не случайный: сначала остаток — по нему решают, хватит ли на
+  /// объект; потом фасовка — по ней считают, сколько упаковок брать; потом
+  /// гарантия. Если поставщик ничего не заполнил, пишем то, что знаем
+  /// всегда: когда обновилась цена. Пустых строк и прочерков быть не должно.
+  static (IconData, String) _footNote(Product p, Offer? best) {
+    final stock = best?.stockQty;
+    if (stock != null) {
+      return (
+        Icons.inventory_2_outlined,
+        'Остаток: ${Formatters.number(stock)} ${p.unit}',
+      );
+    }
+    final pack = p.packQty;
+    if (pack != null) {
+      return (
+        Icons.calculate_outlined,
+        'В упаковке: ${Formatters.number(pack)} ${p.unit}',
+      );
+    }
+    final warranty = p.warrantyLabel;
+    if (warranty != null) {
+      return (Icons.verified_outlined, 'Гарантия: $warranty');
+    }
+    return (
+      Icons.update_rounded,
+      best?.priceUpdatedAt == null
+          ? 'цена без изменений'
+          : 'цена обновлена ${Formatters.relativeDate(best!.priceUpdatedAt)}',
+    );
   }
 }
 
