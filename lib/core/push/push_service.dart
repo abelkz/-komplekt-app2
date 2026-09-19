@@ -28,7 +28,13 @@ class PushStatus {
     required this.permission,
     required this.hasToken,
     required this.registered,
+    this.error,
   });
+
+  /// Текст исключения, если проверка сорвалась. Показывается прямо в
+  /// интерфейсе: без него остаётся только «что-то не так», а сама причина
+  /// уходит в debugPrint, которого на телефоне никто не увидит.
+  final String? error;
 
   final bool firebaseReady;
 
@@ -56,6 +62,12 @@ class PushStatus {
     if (!firebaseReady) {
       return 'Firebase не настроен в этой сборке — уведомления не придут';
     }
+    // Успех проверяем первым: если токен получен и записан, цепочка на
+    // телефоне работает — что бы ни ответила проверка разрешения. Иначе
+    // её осечка выдавала бы тревогу поверх исправного состояния.
+    if (hasToken && registered) {
+      return 'Устройство зарегистрировано, уведомления будут приходить';
+    }
     switch (permission) {
       case AuthorizationStatus.notDetermined:
         return 'Разрешение ещё не запрашивалось. Перезапустите приложение — '
@@ -64,7 +76,10 @@ class PushStatus {
         return 'Уведомления отключены для приложения. Включить: Настройки '
             'телефона → КОМПЛЕКТ → Уведомления';
       case null:
-        return 'Не удалось проверить разрешение на уведомления';
+        final why = error;
+        return why == null
+            ? 'Не удалось проверить разрешение на уведомления'
+            : 'Не удалось проверить разрешение: $why';
       default:
         break;
     }
@@ -200,49 +215,67 @@ class PushService {
         registered: false,
       );
     }
+    // Каждый шаг в своём try. Раньше все три стояли в одном, и осечка
+    // первого прятала два остальных: экран писал «не удалось проверить
+    // разрешение», хотя токен мог быть получен и записан. Диагностика,
+    // которая обрывается на первой же неудаче, показывает не состояние
+    // цепочки, а только место падения.
+    //
+    // Таймауты обязательны: этот метод рисует экран настроек, и зависший
+    // вызов оставил бы строку пустой навсегда.
+    AuthorizationStatus? permission;
+    String? error;
+
     try {
-      // Таймауты и здесь: эту проверку рисует экран настроек, и зависший
-      // вызов оставил бы строку состояния пустой навсегда.
       final settings = await FirebaseMessaging.instance
           .getNotificationSettings()
           .timeout(const Duration(seconds: 10));
-      final permission = settings.authorizationStatus;
-      final allowed = permission == AuthorizationStatus.authorized ||
-          permission == AuthorizationStatus.provisional;
-      // Токен запрашиваем только при выданном разрешении: на iOS без него
-      // getToken() ждёт APNs-токен, которого не будет, и упирается в таймаут.
-      final token = allowed
-          ? await FirebaseMessaging.instance
-              .getToken()
-              .timeout(const Duration(seconds: 20))
-          : null;
+      permission = settings.authorizationStatus;
+    } catch (e) {
+      debugPrint('PushService.status/разрешение: $e');
+      error = 'разрешение — ${_short(e)}';
+    }
 
-      var registered = false;
-      if (token != null && supabase.auth.currentUser != null) {
+    String? token;
+    try {
+      token = await FirebaseMessaging.instance
+          .getToken()
+          .timeout(const Duration(seconds: 20));
+    } catch (e) {
+      debugPrint('PushService.status/токен: $e');
+      error ??= 'токен — ${_short(e)}';
+    }
+
+    var registered = false;
+    if (token != null && supabase.auth.currentUser != null) {
+      try {
         final row = await supabase
             .from('device_tokens')
             .select('token')
             .eq('token', token)
             .maybeSingle();
         registered = row != null;
+      } catch (e) {
+        debugPrint('PushService.status/база: $e');
+        error ??= 'база — ${_short(e)}';
       }
-      return PushStatus(
-        firebaseReady: true,
-        permission: permission,
-        hasToken: token != null,
-        registered: registered,
-      );
-    } catch (e) {
-      debugPrint('PushService.status: $e');
-      // permission: null — проверить не вышло. Врать «запрещено» нельзя:
-      // причина может быть любой, вплоть до таймаута.
-      return const PushStatus(
-        firebaseReady: true,
-        permission: null,
-        hasToken: false,
-        registered: false,
-      );
     }
+
+    return PushStatus(
+      firebaseReady: true,
+      permission: permission,
+      hasToken: token != null,
+      registered: registered,
+      error: error,
+    );
+  }
+
+  /// Короткая запись исключения для показа в интерфейсе: тип и первая
+  /// строка сообщения. Полный стек здесь не нужен — нужен опознавательный
+  /// знак, по которому понятно, куда смотреть.
+  static String _short(Object e) {
+    final text = e.toString().replaceAll('\n', ' ');
+    return text.length > 120 ? '${text.substring(0, 120)}…' : text;
   }
 
   /// Удалить токен (при выходе из аккаунта).
