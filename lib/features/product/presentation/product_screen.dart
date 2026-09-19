@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
@@ -127,15 +128,7 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
         actions: [
           // «Поделиться» из макета: прораб пересылает образец заказчику
           // в мессенджер, и до сих пор для этого приходилось слать скриншот.
-          IconButton(
-            tooltip: 'Поделиться',
-            icon: Icon(Icons.ios_share, color: c.ink),
-            onPressed: () {
-              final p = product.valueOrNull;
-              if (p == null) return;
-              Share.share(_shareText(p));
-            },
-          ),
+          _ShareButton(product: product.valueOrNull),
           IconButton(
             icon: Icon(
               isFav ? Icons.favorite : Icons.favorite_border,
@@ -1174,6 +1167,71 @@ class _SpecsCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Кнопка «Поделиться» в шапке карточки.
+///
+/// Отдельным виджетом не ради красоты. Во-первых, системному листу на iPad
+/// нужен прямоугольник вызвавшего элемента, а взять его можно только из
+/// контекста самой кнопки — без него вызов там падает. Во-вторых, и это
+/// важнее: раньше исключение из `Share.share` уходило в пустоту, и человек
+/// видел мёртвую кнопку, по которой ничего не происходит. Теперь текст
+/// в любом случае попадает в буфер обмена, а причина осечки — в снекбар.
+class _ShareButton extends StatelessWidget {
+  const _ShareButton({required this.product});
+
+  /// null, пока карточка ещё грузится.
+  final Product? product;
+
+  Future<void> _share(BuildContext context) async {
+    final p = product;
+    if (p == null) {
+      _snack(context, 'Товар ещё загружается');
+      return;
+    }
+    final text = _shareText(p);
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Прямоугольник кнопки в глобальных координатах — к нему iPad привязывает
+    // поповер. На iPhone не используется, но и не мешает.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = (box != null && box.hasSize)
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+
+    try {
+      final result = await Share.share(text, sharePositionOrigin: origin);
+      // Лист может быть недоступен (например, в вебе без Web Share API).
+      // Тогда вызов не падает, а просто возвращает «unavailable» — и без
+      // этой ветки нажатие снова выглядело бы как ничего не делающее.
+      if (result.status != ShareResultStatus.unavailable) return;
+      await _copy(messenger, text, 'системное меню недоступно');
+    } catch (e) {
+      final t = e.toString();
+      await _copy(
+          messenger, text, t.startsWith('Failure: ') ? t.substring(9) : t);
+    }
+  }
+
+  Future<void> _copy(
+      ScaffoldMessengerState messenger, String text, String why) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Скопировано в буфер обмена: $why'),
+        duration: const Duration(seconds: 6),
+      ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Поделиться',
+      icon: Icon(Icons.ios_share, color: context.colors.ink),
+      onPressed: () => _share(context),
     );
   }
 }
