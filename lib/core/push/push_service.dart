@@ -25,27 +25,49 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
 class PushStatus {
   const PushStatus({
     required this.firebaseReady,
-    required this.allowed,
+    required this.permission,
     required this.hasToken,
     required this.registered,
   });
 
   final bool firebaseReady;
-  final bool allowed;
+
+  /// null — состояние выяснить не удалось.
+  final AuthorizationStatus? permission;
+
   final bool hasToken;
 
   /// Токен доехал до таблицы device_tokens — значит серверу есть куда слать.
   final bool registered;
 
+  bool get allowed =>
+      permission == AuthorizationStatus.authorized ||
+      permission == AuthorizationStatus.provisional;
+
   bool get ok => firebaseReady && allowed && hasToken && registered;
 
   /// Первая же несработавшая ступень — её и показываем: чинить всё равно
   /// придётся снизу вверх.
+  ///
+  /// «Не спрашивали» и «запретили» разделены нарочно: лечатся они по-разному,
+  /// а раньше обе ступени показывали «запрещены в настройках телефона» — и
+  /// человек шёл искать переключатель, которого там ещё нет.
   String get label {
     if (!firebaseReady) {
       return 'Firebase не настроен в этой сборке — уведомления не придут';
     }
-    if (!allowed) return 'Уведомления запрещены в настройках телефона';
+    switch (permission) {
+      case AuthorizationStatus.notDetermined:
+        return 'Разрешение ещё не запрашивалось. Перезапустите приложение — '
+            'система спросит при следующем открытии';
+      case AuthorizationStatus.denied:
+        return 'Уведомления отключены для приложения. Включить: Настройки '
+            'телефона → КОМПЛЕКТ → Уведомления';
+      case null:
+        return 'Не удалось проверить разрешение на уведомления';
+      default:
+        break;
+    }
     if (!hasToken) {
       return 'Устройство не получило токен: на iOS так бывает без APNs-ключа '
           'в Firebase';
@@ -99,7 +121,17 @@ class PushService {
       await _local.initialize(
         const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-          iOS: DarwinInitializationSettings(),
+          // Разрешение здесь НЕ просим: по умолчанию DarwinInitializationSettings
+          // запрашивает его само, и тогда окно показывают двое — этот плагин
+          // и FirebaseMessaging. iOS спрашивает один раз, ответ достаётся
+          // тому, кто успел первым, а второй видит уже готовый статус.
+          // Просить должен кто-то один, и это FirebaseMessaging ниже:
+          // именно от него зависит выдача токена.
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          ),
         ),
         onDidReceiveNotificationResponse: (resp) => _navigate(resp.payload),
       ).timeout(const Duration(seconds: 15));
@@ -158,7 +190,7 @@ class PushService {
     if (!_ready) {
       return const PushStatus(
         firebaseReady: false,
-        allowed: false,
+        permission: null,
         hasToken: false,
         registered: false,
       );
@@ -169,12 +201,16 @@ class PushService {
       final settings = await FirebaseMessaging.instance
           .getNotificationSettings()
           .timeout(const Duration(seconds: 10));
-      final allowed =
-          settings.authorizationStatus == AuthorizationStatus.authorized ||
-              settings.authorizationStatus == AuthorizationStatus.provisional;
-      final token = await FirebaseMessaging.instance
-          .getToken()
-          .timeout(const Duration(seconds: 20));
+      final permission = settings.authorizationStatus;
+      final allowed = permission == AuthorizationStatus.authorized ||
+          permission == AuthorizationStatus.provisional;
+      // Токен запрашиваем только при выданном разрешении: на iOS без него
+      // getToken() ждёт APNs-токен, которого не будет, и упирается в таймаут.
+      final token = allowed
+          ? await FirebaseMessaging.instance
+              .getToken()
+              .timeout(const Duration(seconds: 20))
+          : null;
 
       var registered = false;
       if (token != null && supabase.auth.currentUser != null) {
