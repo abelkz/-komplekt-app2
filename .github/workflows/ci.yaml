@@ -68,6 +68,13 @@ jobs:
               xml = xml.replace('</activity>', block + '        </activity>', 1)
           # Android 11+: без <queries> url_launcher не открывает браузер,
           # tel: и WhatsApp — canLaunchUrl/launch не находят приложение.
+          # Android 13+ не показывает уведомления без этого разрешения, причём
+          # молча: FirebaseMessaging.requestPermission() показывает системный
+          # запрос только если разрешение объявлено в манифесте.
+          if 'POST_NOTIFICATIONS' not in xml:
+              perm = ('    <uses-permission '
+                      'android:name="android.permission.POST_NOTIFICATIONS" />\n')
+              xml = xml.replace('<application', perm + '    <application', 1)
           if '<queries>' not in xml:
               queries = (
                   '    <queries>\n'
@@ -93,6 +100,12 @@ jobs:
       - name: Patch Android config
         run: |
           F=android/app/build.gradle.kts
+          # flutter create без --org даёт applicationId com.example.komplekt.
+          # Фиксируем тот же идентификатор, что и у iOS: под ним заводится
+          # приложение в Firebase, а с com.example.* публикация в Google Play
+          # невозможна в принципе. namespace не трогаем — он задаёт пакет
+          # класса R и к сопоставлению с Firebase отношения не имеет.
+          sed -i -E 's/applicationId = "[^"]*"/applicationId = "kz.komplekt.app"/' "$F"
           sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' "$F"
           sed -i -E '/^[[:space:]]*compileSdk[[:space:]]*=/ s/=.*/= 36/' "$F"
           sed -i -E '/^[[:space:]]*minSdk[[:space:]]*=/ s/=.*/= 23/' "$F"
