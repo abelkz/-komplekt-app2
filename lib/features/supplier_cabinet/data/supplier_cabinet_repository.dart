@@ -31,12 +31,19 @@ class PriceRow {
     this.sku,
     this.unit = 'шт',
     this.imageUrl,
+    this.stockQty,
+    this.leadTimeDays,
   });
   final String name;
   final double price;
   final String? sku;
   final String unit;
   final String? imageUrl;
+
+  /// Остаток и срок поставки из прайса (миграция 0029). null — колонки
+  /// в файле не было; тогда в базе остаётся «не указано», а не ноль.
+  final double? stockQty;
+  final int? leadTimeDays;
 }
 
 /// Что доступно поставщику для подъёма в топ прямо сейчас.
@@ -367,6 +374,11 @@ class SupplierCabinetRepository {
     required String supplierId,
     String? sku,
     String? imageUrl,
+    double? packQty,
+    int? warrantyMonths,
+    List<String> attrs = const [],
+    double? stockQty,
+    int? leadTimeDays,
   }) async {
     final uid = await _requireSession();
     try {
@@ -379,6 +391,9 @@ class SupplierCabinetRepository {
             'category_slug': categorySlug,
             'image_url': (imageUrl == null || imageUrl.isEmpty) ? null : imageUrl,
             'owner_id': uid,
+            'pack_qty': packQty,
+            'warranty_months': warrantyMonths,
+            'attrs': attrs,
           })
           .select('id')
           .single();
@@ -390,6 +405,8 @@ class SupplierCabinetRepository {
         'owner_id': uid,
         'price': price,
         'in_stock': inStock,
+        'stock_qty': stockQty,
+        'lead_time_days': leadTimeDays,
       });
     } catch (e) {
       throw _dbFail(e, 'Не удалось сохранить товар');
@@ -446,7 +463,8 @@ class SupplierCabinetRepository {
     }
   }
 
-  /// Изменить карточку товара: название, артикул, единицу, категорию, фото.
+  /// Изменить карточку товара: название, артикул, единицу, категорию, фото,
+  /// а также данные из миграции 0029 — фасовку, гарантию и характеристики.
   /// Цена живёт отдельно, в предложении — её меняет [saveOffer].
   Future<void> updateProduct({
     required String productId,
@@ -455,6 +473,9 @@ class SupplierCabinetRepository {
     required String unit,
     String? sku,
     String? imageUrl,
+    double? packQty,
+    int? warrantyMonths,
+    List<String> attrs = const [],
   }) async {
     await _requireSession();
     try {
@@ -464,6 +485,9 @@ class SupplierCabinetRepository {
         'unit': unit,
         'category_slug': categorySlug,
         'image_url': (imageUrl == null || imageUrl.isEmpty) ? null : imageUrl,
+        'pack_qty': packQty,
+        'warranty_months': warrantyMonths,
+        'attrs': attrs,
       }).eq('id', productId);
     } catch (e) {
       throw _dbFail(e, 'Не удалось изменить товар');
@@ -471,12 +495,19 @@ class SupplierCabinetRepository {
   }
 
   /// Обновить цену/наличие. Если предложения ещё нет — создаём.
+  ///
+  /// [stockQty] и [leadTimeDays] (миграция 0029) пишем как есть, включая
+  /// null: форма всегда присылает текущее состояние полей, и очистка поля
+  /// должна доезжать до базы. Иначе поставщик не сможет убрать неверный
+  /// остаток, а по нему покупатель планирует закупку.
   Future<void> saveOffer({
     String? offerId,
     required String productId,
     required String supplierId,
     required double price,
     required bool inStock,
+    double? stockQty,
+    int? leadTimeDays,
   }) async {
     final uid = await _requireSession();
     try {
@@ -487,11 +518,15 @@ class SupplierCabinetRepository {
           'owner_id': uid,
           'price': price,
           'in_stock': inStock,
+          'stock_qty': stockQty,
+          'lead_time_days': leadTimeDays,
         });
       } else {
         await supabase.from('offers').update({
           'price': price,
           'in_stock': inStock,
+          'stock_qty': stockQty,
+          'lead_time_days': leadTimeDays,
           'price_updated_at': DateTime.now().toIso8601String(),
         }).eq('id', offerId);
       }
@@ -583,6 +618,8 @@ class SupplierCabinetRepository {
             'owner_id': uid,
             'price': newRows[i].price,
             'in_stock': true,
+            'stock_qty': newRows[i].stockQty,
+            'lead_time_days': newRows[i].leadTimeDays,
           });
         }
         await supabase.from('offers').insert(offersPayload);
@@ -609,12 +646,19 @@ class SupplierCabinetRepository {
             'owner_id': uid,
             'price': e.value.price,
             'in_stock': true,
+            'stock_qty': e.value.stockQty,
+            'lead_time_days': e.value.leadTimeDays,
             if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
           });
         } else {
           await supabase.from('offers').update({
             'price': e.value.price,
             'in_stock': true,
+            // Колонки не было в файле — значит в прайсе про это ничего не
+            // сказано, и уже сохранённые остаток и срок не затираем.
+            if (e.value.stockQty != null) 'stock_qty': e.value.stockQty,
+            if (e.value.leadTimeDays != null)
+              'lead_time_days': e.value.leadTimeDays,
             if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
           }).eq('id', offer['id']);
         }
