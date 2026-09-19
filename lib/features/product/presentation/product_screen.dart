@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/analytics/analytics.dart';
+import '../../../core/config/build_info.dart';
 import '../../../core/config/env.dart';
 import '../../../core/config/supabase_client.dart';
 import '../../../core/providers/providers.dart';
@@ -1236,12 +1237,11 @@ class _ShareButton extends StatelessWidget {
   }
 }
 
-/// Текст образца для пересылки.
+/// Текст образца для пересылки — марка, артикул, лучшая цена и ссылка.
 ///
-/// Ссылку не подставляем: публичной страницы товара у приложения нет,
-/// и класть в сообщение заказчику адрес, который не откроется, хуже,
-/// чем не класть ничего. Здесь только то, что проверяется глазами —
-/// марка, артикул и лучшая цена с именем поставщика.
+/// Ссылка ведёт в веб-версию: она ходит в ту же живую базу, а каталог открыт
+/// гостю, поэтому у получателя страница откроется без установки приложения
+/// и без регистрации. Это и есть то, ради чего образец пересылают.
 String _shareText(Product p) {
   final best = p.bestOffer;
   return [
@@ -1252,7 +1252,8 @@ String _shareText(Product p) {
           '${best.supplierName.isEmpty ? '' : ' — ${best.supplierName}'}',
     if (best != null && p.offersCount > 1)
       'Всего предложений: ${p.offersCount}',
-    'Сравнение цен — КОМПЛЕКТ',
+    '',
+    BuildInfo.productLink(p.id),
   ].join('\n');
 }
 
