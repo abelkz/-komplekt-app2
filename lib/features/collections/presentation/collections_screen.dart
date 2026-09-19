@@ -288,6 +288,12 @@ class _CollectionBlock extends ConsumerWidget {
           for (final item in collection.items)
             _ItemRow(collectionId: collection.id, item: item),
           const SizedBox(height: 4),
+
+          // Готовность к комплектации: сколько позиций можно забрать сразу.
+          // Считается по in_stock у предложений — никаких выдуманных
+          // процентов «сверки со складами».
+          _Readiness(collection: collection),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -470,6 +476,80 @@ int _supplierCount(Collection collection) => collection.items
 /// поэтому множественное число одно на все числа, кроме единицы.
 String _supplierPlural(int n) =>
     (n % 10 == 1 && n % 100 != 11) ? 'поставщика' : 'поставщиков';
+
+/// Готовность сметы к комплектации: доля позиций, которые есть в наличии
+/// хотя бы у одного поставщика.
+///
+/// Это честный аналог «сверки со складами» из макета: остатков по складам
+/// в базе нет, а вот признак «в наличии» у предложения есть. Прорабу важно
+/// ровно одно — можно ли ехать забирать всё разом или часть придётся ждать.
+class _Readiness extends StatelessWidget {
+  const _Readiness({required this.collection});
+  final Collection collection;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final items =
+        collection.items.where((i) => i.product != null).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final ready = items
+        .where((i) => i.product!.offers.any((o) => o.inStock))
+        .length;
+    final percent = (ready / items.length * 100).round();
+    final waiting = items.length - ready;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: c.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 18, color: c.gray),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Готовность к комплектации',
+                    style: AppTypography.titleMd(color: c.ink)),
+              ),
+              Text('$percent %',
+                  style: AppTypography.priceMd(
+                      color: percent == 100 ? c.green : c.ink)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Полоса заполнения — она же единственный график на экране:
+          // доля читается быстрее, чем число.
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: ready / items.length,
+              minHeight: 4,
+              backgroundColor: c.field,
+              valueColor:
+                  AlwaysStoppedAnimation(percent == 100 ? c.green : c.accent),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            waiting == 0
+                ? 'Все позиции есть в наличии — можно забирать разом.'
+                : '$ready из ${items.length} в наличии, '
+                    '$waiting ${_positionsPlural(waiting)} под заказ.',
+            style: AppTypography.bodySm(color: c.gray),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// «9 позиций», «1 позиция», «2 позиции».
 String _positionsPlural(int n) {
