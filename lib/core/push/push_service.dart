@@ -26,6 +26,7 @@ class PushStatus {
   const PushStatus({
     required this.firebaseReady,
     required this.permission,
+    required this.hasApns,
     required this.hasToken,
     required this.registered,
     this.error,
@@ -40,6 +41,15 @@ class PushStatus {
 
   /// null — состояние выяснить не удалось.
   final AuthorizationStatus? permission;
+
+  /// Выдала ли Apple APNs-токен. null — не iOS, там ступени нет.
+  ///
+  /// Отдельная ступень нужна, чтобы различить две совершенно разные поломки,
+  /// которые снаружи выглядят одинаково («нет токена»): Apple не пустила
+  /// приложение в APNs (entitlement, профиль подписи, сеть) — или пустила,
+  /// но Firebase не смог обменять её токен на свой (APNs-ключ, Team ID,
+  /// bundle id в консоли). Чинятся они в разных местах.
+  final bool? hasApns;
 
   final bool hasToken;
 
@@ -58,7 +68,18 @@ class PushStatus {
   /// «Не спрашивали» и «запретили» разделены нарочно: лечатся они по-разному,
   /// а раньше обе ступени показывали «запрещены в настройках телефона» — и
   /// человек шёл искать переключатель, которого там ещё нет.
+  ///
+  /// Причина (`error`) приписывается к ЛЮБОЙ несработавшей ступени. В первой
+  /// редакции она выводилась только там, где сорвалась проверка разрешения,
+  /// и сборка 33 показала, во что это обходится: ступень «нет токена»
+  /// назвала правдоподобную догадку про APNs-ключ в Firebase, хотя ключ был
+  /// на месте, а настоящий текст исключения так и остался в debugPrint.
+  /// Диагностика, которая угадывает вместо того, чтобы показать ответ
+  /// системы, стоит дороже, чем её отсутствие.
   String get label {
+    final why = error;
+    String withWhy(String text) => why == null ? text : '$text ($why)';
+
     if (!firebaseReady) {
       return 'Firebase не настроен в этой сборке — уведомления не придут';
     }
@@ -76,19 +97,21 @@ class PushStatus {
         return 'Уведомления отключены для приложения. Включить: Настройки '
             'телефона → КОМПЛЕКТ → Уведомления';
       case null:
-        final why = error;
-        return why == null
-            ? 'Не удалось проверить разрешение на уведомления'
-            : 'Не удалось проверить разрешение: $why';
+        return withWhy('Не удалось проверить разрешение');
       default:
         break;
     }
+    if (hasApns == false) {
+      return withWhy('Apple не выдала APNs-токен — без него Firebase не выдаст '
+          'свой. Нажмите «Повторить»');
+    }
     if (!hasToken) {
-      return 'Устройство не получило токен: на iOS так бывает без APNs-ключа '
-          'в Firebase';
+      return withWhy('APNs-токен есть, но Firebase не выдал свой — '
+          'смотреть APNs-ключ и Team ID в консоли Firebase');
     }
     if (!registered) {
-      return 'Токен получен, но не записан в базу — нужен вход в аккаунт';
+      return withWhy('Токен получен, но не записан в базу — нужен вход '
+          'в аккаунт');
     }
     return 'Устройство зарегистрировано, уведомления будут приходить';
   }
@@ -189,10 +212,41 @@ class PushService {
     await syncToken();
   }
 
+  /// Дождаться APNs-токена. Только iOS: на других платформах ступени нет.
+  ///
+  /// Apple выдаёт APNs-токен НЕ сразу: регистрация уходит в сеть и отвечает
+  /// через секунду-другую после того, как человек нажал «Разрешить». А запрос
+  /// FCM-токена без APNs-токена на iOS падает с `apns-token-not-set` —
+  /// Firebase нечего обменивать. `init()` делал ровно это: спрашивал
+  /// разрешение и тут же звал `getToken()`, попадая в эту самую паузу.
+  /// Ошибка гасилась, второй попытки не было, и устройство оставалось
+  /// незарегистрированным до следующего запуска — где повторялось то же
+  /// самое. Поэтому здесь опрос, а не один вызов.
+  static Future<String?> _awaitApnsToken() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return null;
+    final until = DateTime.now().add(const Duration(seconds: 20));
+    while (DateTime.now().isBefore(until)) {
+      try {
+        final apns = await FirebaseMessaging.instance
+            .getAPNSToken()
+            .timeout(const Duration(seconds: 5));
+        if (apns != null) return apns;
+      } catch (e) {
+        debugPrint('PushService._awaitApnsToken: $e');
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return null;
+  }
+
   /// Сохранить токен текущего устройства в Supabase (после входа).
   static Future<void> syncToken() async {
     if (!_ready) return;
     try {
+      // На iOS сначала дожидаемся APNs-токена — см. комментарий выше.
+      // Если он так и не пришёл, всё равно пробуем: пусть getToken()
+      // сам скажет, что не так, а не молчит из-за нашей проверки.
+      await _awaitApnsToken();
       // Таймаут: на iOS getToken() ждёт, пока система выдаст APNs-токен,
       // и без ключа в Firebase или без разрешения может не ответить вовсе.
       final token = await FirebaseMessaging.instance
@@ -204,6 +258,24 @@ class PushService {
     }
   }
 
+  /// Повторить регистрацию по кнопке в настройках.
+  ///
+  /// Нужна потому, что первая попытка идёт один раз за запуск и упирается
+  /// в чужие сроки: сеть, ответ APNs, момент, когда человек нажал
+  /// «Разрешить». Без кнопки единственный способ попробовать снова —
+  /// перезапустить приложение, и человеку это неоткуда узнать.
+  static Future<void> retry() async {
+    if (!_ready) return;
+    try {
+      await FirebaseMessaging.instance
+          .requestPermission()
+          .timeout(const Duration(minutes: 2));
+    } catch (e) {
+      debugPrint('PushService.retry/разрешение: $e');
+    }
+    await syncToken();
+  }
+
   /// Проверить всю цепочку доставки. Ошибки не поднимаем: экран настроек
   /// должен открыться в любом случае, даже если Firebase вовсе нет.
   static Future<PushStatus> status() async {
@@ -211,6 +283,7 @@ class PushService {
       return const PushStatus(
         firebaseReady: false,
         permission: null,
+        hasApns: null,
         hasToken: false,
         registered: false,
       );
@@ -234,6 +307,23 @@ class PushService {
     } catch (e) {
       debugPrint('PushService.status/разрешение: $e');
       error = 'разрешение — ${_short(e)}';
+    }
+
+    // APNs-ступень проверяем до FCM-токена: она первая в цепочке, и её
+    // ответ говорит, в чьём хозяйстве искать — Apple или Firebase.
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    bool? hasApns;
+    if (isIos) {
+      try {
+        final apns = await FirebaseMessaging.instance
+            .getAPNSToken()
+            .timeout(const Duration(seconds: 10));
+        hasApns = apns != null;
+      } catch (e) {
+        debugPrint('PushService.status/APNs: $e');
+        error ??= 'APNs — ${_short(e)}';
+        hasApns = false;
+      }
     }
 
     String? token;
@@ -264,6 +354,7 @@ class PushService {
     return PushStatus(
       firebaseReady: true,
       permission: permission,
+      hasApns: hasApns,
       hasToken: token != null,
       registered: registered,
       error: error,
