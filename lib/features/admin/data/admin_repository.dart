@@ -72,10 +72,194 @@ class ContentReport {
   bool get onSupplier => target == 'supplier_review';
 }
 
+/// Сводка по приложению (RPC `admin_overview`, миграция 0030).
+class AdminOverview {
+  const AdminOverview({
+    required this.usersTotal,
+    required this.usersNew,
+    required this.suppliersTotal,
+    required this.suppliersPending,
+    required this.productsTotal,
+    required this.offersTotal,
+    required this.searches,
+    required this.productViews,
+    required this.categoryOpens,
+    required this.contacts,
+    required this.favoritesTotal,
+    required this.paidTotal,
+  });
+
+  final int usersTotal;
+  final int usersNew;
+  final int suppliersTotal;
+  final int suppliersPending;
+  final int productsTotal;
+  final int offersTotal;
+  final int searches;
+  final int productViews;
+  final int categoryOpens;
+  final int contacts;
+  final int favoritesTotal;
+  final double paidTotal;
+
+  static int _i(Object? v) => (v as num?)?.toInt() ?? 0;
+
+  factory AdminOverview.fromMap(Map<String, dynamic> m) => AdminOverview(
+        usersTotal: _i(m['users_total']),
+        usersNew: _i(m['users_new']),
+        suppliersTotal: _i(m['suppliers_total']),
+        suppliersPending: _i(m['suppliers_pending']),
+        productsTotal: _i(m['products_total']),
+        offersTotal: _i(m['offers_total']),
+        searches: _i(m['searches']),
+        productViews: _i(m['product_views']),
+        categoryOpens: _i(m['category_opens']),
+        contacts: _i(m['contacts']),
+        favoritesTotal: _i(m['favorites_total']),
+        // numeric приезжает из PostgREST строкой, а не числом
+        paidTotal: double.tryParse('${m['paid_total'] ?? 0}') ?? 0,
+      );
+}
+
+/// Строка списка «что искали» / «какие категории открывали».
+class CountedRow {
+  const CountedRow({required this.label, required this.n, this.hint});
+  final String label;
+  final int n;
+
+  /// Второстепенная подпись: у категории — её slug.
+  final String? hint;
+}
+
+/// Поставщик с показателями (RPC `admin_suppliers`, миграция 0030).
+class SupplierRow {
+  const SupplierRow({
+    required this.id,
+    required this.name,
+    required this.city,
+    required this.products,
+    required this.offers,
+    required this.views,
+    required this.contacts,
+    this.plan,
+    this.planUntil,
+    this.verified = false,
+    this.status,
+    this.lastPriceAt,
+  });
+
+  final String id;
+  final String name;
+  final String city;
+  final int products;
+  final int offers;
+  final int views;
+  final int contacts;
+  final String? plan;
+  final DateTime? planUntil;
+  final bool verified;
+  final String? status;
+
+  /// Когда последний раз трогали прайс. Мёртвый прайс хуже отсутствующего:
+  /// покупатель звонит по цене, которой уже нет.
+  final DateTime? lastPriceAt;
+
+  bool get isPro =>
+      plan == 'pro' && (planUntil == null || planUntil!.isAfter(DateTime.now()));
+
+  factory SupplierRow.fromMap(Map<String, dynamic> m) => SupplierRow(
+        id: m['supplier_id'].toString(),
+        name: m['name'] as String? ?? '',
+        city: m['city'] as String? ?? '',
+        products: (m['products'] as num?)?.toInt() ?? 0,
+        offers: (m['offers'] as num?)?.toInt() ?? 0,
+        views: (m['views'] as num?)?.toInt() ?? 0,
+        contacts: (m['contacts'] as num?)?.toInt() ?? 0,
+        plan: m['plan'] as String?,
+        planUntil: m['plan_until'] == null
+            ? null
+            : DateTime.tryParse(m['plan_until'].toString()),
+        verified: m['verified'] as bool? ?? false,
+        status: m['status'] as String?,
+        lastPriceAt: m['last_price_at'] == null
+            ? null
+            : DateTime.tryParse(m['last_price_at'].toString()),
+      );
+}
+
 /// Всё, что администратор делает с заявками. Права проверяет база:
 /// без role = 'admin' политики просто ничего не отдадут.
 class AdminRepository {
   const AdminRepository();
+
+  // ─────────────────────────── Статистика ───────────────────────────
+  //
+  // Считает база (миграция 0030). Здесь только разбор ответа: агрегировать
+  // на клиенте нельзя — RLS отдаёт строки, и ради одного числа пришлось бы
+  // тянуть в браузер всю таблицу профилей вместе с персональными данными.
+
+  /// Сводка за последние [days] дней.
+  Future<AdminOverview> overview({int days = 30}) async {
+    try {
+      final rows = await supabase.rpc('admin_overview', params: {'p_days': days});
+      final list = (rows as List).cast<Map<String, dynamic>>();
+      if (list.isEmpty) throw const Failure('База не вернула сводку');
+      return AdminOverview.fromMap(list.first);
+    } catch (e) {
+      if (e is Failure) rethrow;
+      throw mapError(e, fallback: 'Не удалось загрузить сводку');
+    }
+  }
+
+  /// Что искали. Пустой список — нормальное состояние: значит за период
+  /// никто не искал, а не «сломалось».
+  Future<List<CountedRow>> topSearches({int days = 30, int limit = 20}) async {
+    try {
+      final rows = await supabase.rpc('admin_top_searches',
+          params: {'p_days': days, 'p_limit': limit});
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          CountedRow(
+            label: r['query'] as String? ?? '',
+            n: (r['n'] as num?)?.toInt() ?? 0,
+          ),
+      ];
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось загрузить поисковые запросы');
+    }
+  }
+
+  /// Какие категории открывали, а какие лежат мёртвым грузом.
+  Future<List<CountedRow>> topCategories({int days = 30, int limit = 20}) async {
+    try {
+      final rows = await supabase.rpc('admin_top_categories',
+          params: {'p_days': days, 'p_limit': limit});
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          CountedRow(
+            label: r['name'] as String? ?? '',
+            n: (r['n'] as num?)?.toInt() ?? 0,
+            hint: r['slug'] as String?,
+          ),
+      ];
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось загрузить категории');
+    }
+  }
+
+  /// Поставщики с показателями за период.
+  Future<List<SupplierRow>> supplierStats({int days = 30}) async {
+    try {
+      final rows =
+          await supabase.rpc('admin_suppliers', params: {'p_days': days});
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          SupplierRow.fromMap(r),
+      ];
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось загрузить поставщиков');
+    }
+  }
 
   /// Заявки поставщиков и действующие компании.
   Future<List<AppUser>> suppliers() async {
