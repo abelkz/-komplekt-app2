@@ -370,4 +370,12 @@ class DemoStorageRepository extends StorageRepository {
   @override
   Future<String> uploadProductImage(Uint8List bytes, {String ext = 'jpg'}) async =>
       throw const Failure('Загрузка фото недоступна в демо-режиме');
+
+  @override
+  Future<String> uploadAvatar(Uint8List bytes, {String ext = 'jpg'}) async =>
+      throw const Failure('Загрузка фото недоступна в демо-режиме');
+
+  @override
+  Future<String> uploadCompanyLogo(Uint8List bytes, {String ext = 'jpg'}) async =>
+      throw const Failure('Загрузка фото недоступна в демо-режиме');
 }
