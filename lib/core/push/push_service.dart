@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../firebase_options.dart';
 import '../config/supabase_client.dart';
 import '../router/app_router.dart';
 
@@ -11,7 +12,17 @@ import '../router/app_router.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   // Инициализируем Firebase в фоновом изоляте (на случай холодного старта).
-  await Firebase.initializeApp();
+  //
+  // Настройки передаём явно, ровно как в main.dart. Без них Firebase ищет
+  // нативные конфиги (GoogleService-Info.plist / google-services.json),
+  // а их в репозитории нет и быть не может — android/ и ios/ генерируются
+  // заново каждой сборкой (CLAUDE.md §6.4). Вызов без параметров упал бы
+  // здесь всегда, то есть на каждом пуше, пришедшем в свёрнутое
+  // приложение, — и молча, потому что исключение в фоновом изоляте
+  // никому не видно.
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   // Системное уведомление FCM покажет сам; здесь можно вести аналитику.
 }
 
@@ -166,6 +177,24 @@ class PushService {
       // винила Firebase, который был в полном порядке.
       _ready = true;
 
+      // Разрешение спрашиваем ПЕРВЫМ — до настройки локальных уведомлений.
+      //
+      // Порядок здесь не косметика. На iOS именно этот вызов внутри
+      // firebase_messaging запускает регистрацию в APNs, и от неё зависит
+      // всё остальное: без APNs-токена getToken() падает с
+      // `apns-token-not-set` (ровно это показала сборка 34). А
+      // flutter_local_notifications при инициализации забирает себе
+      // делегата UNUserNotificationCenter — того самого, которого
+      // firebase_messaging ставит при регистрации плагина. Кто успел
+      // последним, тот и делегат, и раньше последним был плагин локальных
+      // уведомлений: он вклинивался между обработчиками Firebase и
+      // запросом разрешения.
+      //
+      // Срок щедрый: вызов ждёт, пока человек ответит системному окну.
+      await FirebaseMessaging.instance
+          .requestPermission()
+          .timeout(const Duration(minutes: 2));
+
       await _local.initialize(
         const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -173,7 +202,7 @@ class PushService {
           // запрашивает его само, и тогда окно показывают двое — этот плагин
           // и FirebaseMessaging. iOS спрашивает один раз, ответ достаётся
           // тому, кто успел первым, а второй видит уже готовый статус.
-          // Просить должен кто-то один, и это FirebaseMessaging ниже:
+          // Просить должен кто-то один, и это FirebaseMessaging выше:
           // именно от него зависит выдача токена.
           iOS: DarwinInitializationSettings(
             requestAlertPermission: false,
@@ -189,11 +218,6 @@ class PushService {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(_channel)
           .timeout(const Duration(seconds: 15));
-
-      // Запрос разрешения ждёт ответа человека, поэтому срок щедрый.
-      await FirebaseMessaging.instance
-          .requestPermission()
-          .timeout(const Duration(minutes: 2));
 
       // Запуск из «холодного» состояния по тапу на пуш
       final initial = await FirebaseMessaging.instance
@@ -222,9 +246,11 @@ class PushService {
   /// Ошибка гасилась, второй попытки не было, и устройство оставалось
   /// незарегистрированным до следующего запуска — где повторялось то же
   /// самое. Поэтому здесь опрос, а не один вызов.
-  static Future<String?> _awaitApnsToken() async {
+  static Future<String?> _awaitApnsToken({
+    Duration limit = const Duration(seconds: 20),
+  }) async {
     if (defaultTargetPlatform != TargetPlatform.iOS) return null;
-    final until = DateTime.now().add(const Duration(seconds: 20));
+    final until = DateTime.now().add(limit);
     while (DateTime.now().isBefore(until)) {
       try {
         final apns = await FirebaseMessaging.instance
@@ -311,13 +337,17 @@ class PushService {
 
     // APNs-ступень проверяем до FCM-токена: она первая в цепочке, и её
     // ответ говорит, в чьём хозяйстве искать — Apple или Firebase.
+    //
+    // Ждём, а не спрашиваем один раз: лист могли открыть через секунду
+    // после ответа на системное окно, и одиночный снимок показал бы
+    // поломку там, где регистрация просто ещё в пути.
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
     bool? hasApns;
     if (isIos) {
       try {
-        final apns = await FirebaseMessaging.instance
-            .getAPNSToken()
-            .timeout(const Duration(seconds: 10));
+        final apns = await _awaitApnsToken(
+          limit: const Duration(seconds: 8),
+        );
         hasApns = apns != null;
       } catch (e) {
         debugPrint('PushService.status/APNs: $e');
