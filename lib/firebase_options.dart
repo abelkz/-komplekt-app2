@@ -33,13 +33,10 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'iOS-приложение ещё не заведено в Firebase. '
-          'Что сделать — в ПУШИ_И_ФУНКЦИИ.md, пункты 1.1–1.4',
-        );
+        return ios;
       default:
         throw UnsupportedError(
-          'Firebase настроен только под Android: $defaultTargetPlatform',
+          'Firebase настроен только под Android и iOS: $defaultTargetPlatform',
         );
     }
   }
@@ -51,5 +48,18 @@ class DefaultFirebaseOptions {
     appId: '1:1002346937741:android:3e50c6ff9480a07a1b91c4',
     messagingSenderId: '1002346937741',
     projectId: 'komplekt-8847a',
+  );
+
+  /// Эти значения включают Firebase в приложении, но одних их для пушей на
+  /// iOS мало: нужны ещё APNs-ключ в Firebase, возможность Push Notifications
+  /// у App ID и флаг PUSH_READY в Codemagic (см. ПУШИ_И_ФУНКЦИИ.md, 1.2–1.4).
+  /// Без них токен просто не выдаётся, и строка состояния в профиле скажет,
+  /// на каком шаге оборвалось.
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyAzpQSKbfTbNiZBLMv9Fxz_GlVTUAnXhNg',
+    appId: '1:1002346937741:ios:a24c2615d302d9f91b91c4',
+    messagingSenderId: '1002346937741',
+    projectId: 'komplekt-8847a',
+    iosBundleId: 'kz.komplekt.app',
   );
 }
