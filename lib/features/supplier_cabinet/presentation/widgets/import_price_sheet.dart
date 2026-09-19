@@ -33,7 +33,7 @@ class _ImportPriceSheetState extends ConsumerState<_ImportPriceSheet> {
   bool _parsing = false;
 
   // выбранные колонки (индекс в _headers) и категория
-  int? _name, _price, _sku, _unit, _img;
+  int? _name, _price, _sku, _unit, _img, _stock, _lead;
   String? _category;
 
   Future<void> _pick() async {
@@ -174,6 +174,9 @@ class _ImportPriceSheetState extends ConsumerState<_ImportPriceSheet> {
     _sku = guess(['артик', 'sku', 'код', 'art']);
     _unit = guess(['ед', 'изм', 'unit']);
     _img = guess(['фото', 'image', 'img', 'картин', 'ссыл']);
+    // «Остаток» ищем раньше «склад»: колонка «Склад №2» — это не количество.
+    _stock = guess(['остат', 'наличи', 'колич', 'stock', 'qty', 'кол-во']);
+    _lead = guess(['срок', 'постав', 'отгруз', 'lead', 'дней']);
   }
 
   int get _validCount {
@@ -214,6 +217,9 @@ class _ImportPriceSheetState extends ConsumerState<_ImportPriceSheet> {
         sku: _sku != null ? (r[_sku!].trim().isEmpty ? null : r[_sku!].trim()) : null,
         unit: _unit != null && r[_unit!].trim().isNotEmpty ? r[_unit!].trim() : 'шт',
         imageUrl: _img != null && r[_img!].trim().isNotEmpty ? r[_img!].trim() : null,
+        stockQty: _stock != null ? _parsePrice(r[_stock!]) : null,
+        leadTimeDays:
+            _lead != null ? _parsePrice(r[_lead!])?.round() : null,
       ));
     }
     final n = await ref.read(cabinetControllerProvider.notifier).importPrice(
@@ -297,6 +303,20 @@ class _ImportPriceSheetState extends ConsumerState<_ImportPriceSheet> {
                   headers: _headers,
                   optional: true,
                   onChanged: (v) => setState(() => _img = v)),
+              // Остаток и срок из прайса: вручную их по 500 позициям
+              // никто не проставит, а без них карточка молчит о наличии.
+              _ColumnPicker(
+                  label: 'Остаток',
+                  value: _stock,
+                  headers: _headers,
+                  optional: true,
+                  onChanged: (v) => setState(() => _stock = v)),
+              _ColumnPicker(
+                  label: 'Срок поставки, дней',
+                  value: _lead,
+                  headers: _headers,
+                  optional: true,
+                  onChanged: (v) => setState(() => _lead = v)),
               DropdownButtonFormField<String>(
                 value: _category,
                 decoration:

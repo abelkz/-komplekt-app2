@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../catalog/domain/offer.dart';
 import '../../../catalog/domain/product.dart';
 import '../../../catalog/presentation/widgets/product_thumb.dart';
 import '../../data/supplier_cabinet_repository.dart';
@@ -29,34 +30,55 @@ class ProductEditRow extends ConsumerStatefulWidget {
 
 class _ProductEditRowState extends ConsumerState<ProductEditRow> {
   late final TextEditingController _price;
+  late final TextEditingController _stock;
+  late final TextEditingController _lead;
   late bool _inStock;
 
   String? get _offerId =>
       widget.product.offers.isNotEmpty ? widget.product.offers.first.id : null;
 
+  Offer? get _offer =>
+      widget.product.offers.isNotEmpty ? widget.product.offers.first : null;
+
   @override
   void initState() {
     super.initState();
-    final offer =
-        widget.product.offers.isNotEmpty ? widget.product.offers.first : null;
+    final offer = _offer;
     _price = TextEditingController(
         text: offer != null ? offer.price.toStringAsFixed(0) : '');
+    _stock = TextEditingController(text: _num(offer?.stockQty));
+    _lead = TextEditingController(text: offer?.leadTimeDays?.toString() ?? '');
     _inStock = offer?.inStock ?? true;
+  }
+
+  /// Остаток показываем без хвоста «.0»: 48 м², а не 48.0 м².
+  static String _num(double? v) {
+    if (v == null) return '';
+    return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
   }
 
   @override
   void dispose() {
-    _price.dispose();
+    for (final c in [_price, _stock, _lead]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  /// Цена или наличие отличаются от того, что сейчас в базе
+  double? get _typedStock =>
+      double.tryParse(_stock.text.trim().replaceAll(',', '.'));
+
+  int? get _typedLead => int.tryParse(_lead.text.trim());
+
+  /// Цена, наличие, остаток или срок отличаются от того, что сейчас в базе
   bool get _dirty {
-    final offer =
-        widget.product.offers.isNotEmpty ? widget.product.offers.first : null;
+    final offer = _offer;
     final typed = double.tryParse(_price.text.replaceAll(',', '.'));
     if (offer == null) return typed != null && typed > 0;
-    return typed != offer.price || _inStock != offer.inStock;
+    return typed != offer.price ||
+        _inStock != offer.inStock ||
+        _typedStock != offer.stockQty ||
+        _typedLead != offer.leadTimeDays;
   }
 
   Future<void> _save() async {
@@ -65,15 +87,28 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
       _snack('Цена должна быть числом больше нуля');
       return;
     }
+    // Пустое поле — это «не знаю», и так оно и уедет в базу (null).
+    // А вот мусор вместо числа молча превращать в «не знаю» нельзя:
+    // по остатку и сроку считают закупку.
+    if (_stock.text.trim().isNotEmpty && _typedStock == null) {
+      _snack('Остаток должен быть числом');
+      return;
+    }
+    if (_lead.text.trim().isNotEmpty && _typedLead == null) {
+      _snack('Срок поставки — целое число дней');
+      return;
+    }
     final ok = await ref.read(cabinetControllerProvider.notifier).saveOffer(
           offerId: _offerId,
           productId: widget.product.id,
           supplierId: widget.supplierId,
           price: price,
           inStock: _inStock,
+          stockQty: _typedStock,
+          leadTimeDays: _typedLead,
         );
     if (ok) {
-      _snack('Цена обновлена ✓');
+      _snack('Сохранено ✓');
       return;
     }
     // Показываем настоящий текст ошибки от базы, а не общую фразу
@@ -232,6 +267,30 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
             ],
           ),
           const SizedBox(height: 8),
+          // Остаток и срок поставки (миграция 0029). Пустое поле — «не знаю»:
+          // в карточке товара тогда просто ничего не обещаем покупателю.
+          Row(
+            children: [
+              Expanded(
+                child: _NumField(
+                  controller: _stock,
+                  label: 'Остаток, ${p.unit}',
+                  decimal: true,
+                  onChanged: () => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _NumField(
+                  controller: _lead,
+                  label: 'Срок, дней',
+                  hint: '0 — со склада',
+                  onChanged: () => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           // Явная кнопка вместо маленькой галочки: пока ничего не меняли —
           // она приглушена, после правки цены становится активной.
           SizedBox(
@@ -243,7 +302,7 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
                 foregroundColor: _dirty ? AppColors.brandInk : c.gray,
               ),
               icon: const Icon(Icons.save_outlined, size: 18),
-              label: Text(_dirty ? 'Обновить цену' : 'Цена сохранена'),
+              label: Text(_dirty ? 'Сохранить' : 'Всё сохранено'),
               onPressed: _dirty ? _save : null,
             ),
           ),
@@ -299,6 +358,45 @@ class _ProductEditRowState extends ConsumerState<ProductEditRow> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Компактное числовое поле строки кабинета: одинаковые отступы и клавиатура
+/// у остатка и срока, чтобы строка не разъезжалась по высоте.
+class _NumField extends StatelessWidget {
+  const _NumField({
+    required this.controller,
+    required this.label,
+    required this.onChanged,
+    this.hint,
+    this.decimal = false,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? hint;
+  final bool decimal;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.numberWithOptions(decimal: decimal),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(
+            decimal ? RegExp(r'[0-9.,]') : RegExp(r'[0-9]')),
+      ],
+      onChanged: (_) => onChanged(),
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       ),
     );
   }

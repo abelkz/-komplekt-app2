@@ -48,6 +48,12 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   final _sku = TextEditingController();
   final _price = TextEditingController();
   final _img = TextEditingController();
+  // Данные из миграции 0029 — то, что карточка товара обещает покупателю
+  final _pack = TextEditingController();
+  final _warranty = TextEditingController();
+  final _attrs = TextEditingController();
+  final _stock = TextEditingController();
+  final _lead = TextEditingController();
   String _unit = 'шт';
   bool _inStock = true;
   String? _category;
@@ -68,11 +74,22 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
     _category = p.categorySlug;
     _img.text = p.primaryImageUrl ?? '';
     _photoUrl = p.primaryImageUrl;
+    _pack.text = _num(p.packQty);
+    _warranty.text = p.warrantyMonths?.toString() ?? '';
+    _attrs.text = p.attrs.join(', ');
     final offer = p.offers.isNotEmpty ? p.offers.first : null;
     if (offer != null) {
       _price.text = offer.price.toStringAsFixed(0);
       _inStock = offer.inStock;
+      _stock.text = _num(offer.stockQty);
+      _lead.text = offer.leadTimeDays?.toString() ?? '';
     }
+  }
+
+  /// Без хвоста «.0»: в поле фасовки должно стоять 1.44, но 12 — а не 12.0.
+  static String _num(double? v) {
+    if (v == null) return '';
+    return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
   }
 
   Future<void> _pickPhoto() async {
@@ -112,10 +129,36 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
 
   @override
   void dispose() {
-    for (final c in [_name, _sku, _price, _img]) {
+    for (final c in [
+      _name,
+      _sku,
+      _price,
+      _img,
+      _pack,
+      _warranty,
+      _attrs,
+      _stock,
+      _lead,
+    ]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// Разбор необязательного числового поля: пусто — значит «не указано»,
+  /// и это законный ответ. Ошибку возвращаем только на непустой мусор.
+  _Parsed _parse(TextEditingController c, String label,
+      {bool integer = false}) {
+    final raw = c.text.trim().replaceAll(',', '.');
+    if (raw.isEmpty) return const _Parsed(null);
+    final v = integer ? int.tryParse(raw)?.toDouble() : double.tryParse(raw);
+    if (v == null || v < 0) {
+      return _Parsed(null,
+          error: integer
+              ? '$label — целое число, не меньше нуля'
+              : '$label — число, не меньше нуля');
+    }
+    return _Parsed(v);
   }
 
   Future<void> _save() async {
@@ -134,9 +177,36 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
       setState(() => _error = 'Укажите корректную цену');
       return;
     }
+    // Пустое поле — «не указано», это нормально. Но если поставщик что-то
+    // ввёл, а числом это не является, молча выбрасывать введённое нельзя.
+    final pack = _parse(_pack, 'Фасовка');
+    if (pack.invalid) {
+      setState(() => _error = pack.error);
+      return;
+    }
+    final warranty = _parse(_warranty, 'Гарантия', integer: true);
+    if (warranty.invalid) {
+      setState(() => _error = warranty.error);
+      return;
+    }
+    final stock = _parse(_stock, 'Остаток');
+    if (stock.invalid) {
+      setState(() => _error = stock.error);
+      return;
+    }
+    final lead = _parse(_lead, 'Срок поставки', integer: true);
+    if (lead.invalid) {
+      setState(() => _error = lead.error);
+      return;
+    }
+
     final ctrl = ref.read(cabinetControllerProvider.notifier);
     final sku = _sku.text.trim().isEmpty ? null : _sku.text.trim();
     final img = _img.text.trim().isEmpty ? null : _img.text.trim();
+    final attrs = [
+      for (final a in _attrs.text.split(','))
+        if (a.trim().isNotEmpty) a.trim(),
+    ];
 
     bool ok;
     if (_editing) {
@@ -148,6 +218,9 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
         unit: _unit,
         sku: sku,
         imageUrl: img,
+        packQty: pack.value,
+        warrantyMonths: warranty.value?.toInt(),
+        attrs: attrs,
       );
       // цена живёт в предложении — сохраняем её отдельно
       if (ok) {
@@ -157,6 +230,8 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
           supplierId: widget.supplierId,
           price: price,
           inStock: _inStock,
+          stockQty: stock.value,
+          leadTimeDays: lead.value?.toInt(),
         );
       }
     } else {
@@ -169,6 +244,11 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
         supplierId: widget.supplierId,
         sku: sku,
         imageUrl: img,
+        packQty: pack.value,
+        warrantyMonths: warranty.value?.toInt(),
+        attrs: attrs,
+        stockQty: stock.value,
+        leadTimeDays: lead.value?.toInt(),
       );
     }
     if (!mounted) return;
@@ -293,6 +373,67 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            // Остаток и срок — это про конкретного поставщика, поэтому живут
+            // в предложении. По ним покупатель планирует закупку, и пустое
+            // поле честнее выдуманного числа: тогда карточка просто молчит.
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _stock,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                        labelText: 'Остаток, $_unit', hintText: 'сколько есть'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _lead,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Срок, дней', hintText: '0 — со склада'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Фасовка и гарантия — свойства самой карточки, общие для всех
+            // поставщиков. Фасовка нужна расчёту: «нужно 38 м²» превращается
+            // в «7 коробок» только если известно, сколько в коробке.
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _pack,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                        labelText: 'В упаковке, $_unit', hintText: '1.44'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _warranty,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Гарантия, мес.', hintText: '60'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _attrs,
+              decoration: const InputDecoration(
+                labelText: 'Характеристики',
+                hintText: 'Матовая, R10, ректифицированный',
+                helperText: 'Через запятую — покажем списком в карточке',
+              ),
+            ),
+            const SizedBox(height: 12),
             // Фото: загрузка с устройства (или ссылкой ниже)
             Row(
               children: [
@@ -352,6 +493,14 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
       ),
     );
   }
+}
+
+/// Результат разбора необязательного числового поля.
+class _Parsed {
+  const _Parsed(this.value, {this.error});
+  final double? value;
+  final String? error;
+  bool get invalid => error != null;
 }
 
 extension on BuildContext {
