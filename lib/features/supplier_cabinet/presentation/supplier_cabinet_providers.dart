@@ -71,6 +71,11 @@ class CabinetController extends AsyncNotifier<void> {
     required String supplierId,
     String? sku,
     String? imageUrl,
+    double? packQty,
+    int? warrantyMonths,
+    List<String> attrs = const [],
+    double? stockQty,
+    int? leadTimeDays,
   }) =>
       _run(() => ref.read(supplierCabinetRepositoryProvider).addProduct(
             name: name,
@@ -81,6 +86,11 @@ class CabinetController extends AsyncNotifier<void> {
             supplierId: supplierId,
             sku: sku,
             imageUrl: imageUrl,
+            packQty: packQty,
+            warrantyMonths: warrantyMonths,
+            attrs: attrs,
+            stockQty: stockQty,
+            leadTimeDays: leadTimeDays,
           ));
 
   /// Своя цена к уже существующей карточке общего каталога.
@@ -106,6 +116,9 @@ class CabinetController extends AsyncNotifier<void> {
     required String unit,
     String? sku,
     String? imageUrl,
+    double? packQty,
+    int? warrantyMonths,
+    List<String> attrs = const [],
   }) =>
       _run(() => ref.read(supplierCabinetRepositoryProvider).updateProduct(
             productId: productId,
@@ -114,6 +127,9 @@ class CabinetController extends AsyncNotifier<void> {
             unit: unit,
             sku: sku,
             imageUrl: imageUrl,
+            packQty: packQty,
+            warrantyMonths: warrantyMonths,
+            attrs: attrs,
           ));
 
   Future<bool> saveOffer({
@@ -122,6 +138,8 @@ class CabinetController extends AsyncNotifier<void> {
     required String supplierId,
     required double price,
     required bool inStock,
+    double? stockQty,
+    int? leadTimeDays,
   }) =>
       _run(() => ref.read(supplierCabinetRepositoryProvider).saveOffer(
             offerId: offerId,
@@ -129,6 +147,8 @@ class CabinetController extends AsyncNotifier<void> {
             supplierId: supplierId,
             price: price,
             inStock: inStock,
+            stockQty: stockQty,
+            leadTimeDays: leadTimeDays,
           ));
 
   /// Поднять товар в топ списков. Возвращает дату окончания или null.
