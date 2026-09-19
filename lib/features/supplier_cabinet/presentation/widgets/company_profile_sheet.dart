@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/providers/data_refresh.dart';
 import '../../../../core/providers/providers.dart';
 import '../../../../core/utils/phone_input.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/avatar.dart';
 import '../../../suppliers_map/domain/supplier.dart';
 
 /// Редактор профиля компании для витрины: WhatsApp, сайт, год работы,
@@ -37,6 +39,50 @@ class _CompanyProfileSheetState extends ConsumerState<_CompanyProfileSheet> {
   late final _about = TextEditingController(text: widget.company.about ?? '');
   bool _busy = false;
 
+  /// Логотип держим в состоянии, а не читаем из widget.company: он меняется
+  /// до сохранения формы, и без этого выбранная картинка не показалась бы,
+  /// пока человек не нажмёт «Сохранить».
+  late String? _logo = widget.company.logoUrl;
+  bool _uploading = false;
+
+  Future<void> _pickLogo() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _uploading = true);
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        // Логотип показывается максимум 56 точками — тащить исходник
+        // на несколько мегабайт незачем.
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (picked == null) {
+        setState(() => _uploading = false);
+        return;
+      }
+      final bytes = await picked.readAsBytes();
+      final ext = picked.name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+      final url = await ref
+          .read(storageRepositoryProvider)
+          .uploadCompanyLogo(bytes, ext: ext);
+      if (!mounted) return;
+      setState(() {
+        _logo = url;
+        _uploading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploading = false);
+      final t = e.toString();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(
+                t.startsWith('Failure: ') ? t.substring(9) : 'Не вышло')));
+    }
+  }
+
   @override
   void dispose() {
     for (final c in [_whatsapp, _website, _year, _about]) {
@@ -62,6 +108,7 @@ class _CompanyProfileSheetState extends ConsumerState<_CompanyProfileSheet> {
             website: _website.text,
             sinceYear: year,
             about: _about.text,
+            logoUrl: _logo,
           );
       refreshAppData(ref);
       if (!mounted) return;
@@ -97,6 +144,49 @@ class _CompanyProfileSheetState extends ConsumerState<_CompanyProfileSheet> {
           const SizedBox(height: 4),
           Text('Эти данные видит покупатель на вашей витрине.',
               style: TextStyle(fontSize: 12, color: c.gray)),
+          const SizedBox(height: 16),
+          // Логотип первым: это первое, что покупатель видит в списке
+          // компаний, и заполнить его стоит раньше остального.
+          Row(
+            children: [
+              Avatar(
+                name: widget.company.name,
+                url: _logo,
+                size: 56,
+                company: true,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _uploading ? null : _pickLogo,
+                      icon: _uploading
+                          ? const SizedBox(
+                              height: 14,
+                              width: 14,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.add_a_photo_outlined, size: 16),
+                      label: Text(_uploading
+                          ? 'Загружаю…'
+                          : (_logo == null ? 'Логотип' : 'Заменить логотип')),
+                    ),
+                    if (_logo != null)
+                      TextButton(
+                        onPressed: _uploading
+                            ? null
+                            : () => setState(() => _logo = null),
+                        child: Text('Убрать',
+                            style: TextStyle(fontSize: 12, color: c.gray)),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           _field(_whatsapp, 'WhatsApp',
               hint: '+7 700 000 0000',
