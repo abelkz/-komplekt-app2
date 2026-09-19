@@ -75,11 +75,26 @@ class PushService {
 
   static bool _ready = false;
 
-  /// Инициализация: каналы, разрешения, обработчики. Вызывается в main
-  /// после Firebase.initializeApp(). Ошибки не пробрасываются.
+  /// Инициализация: каналы, разрешения, обработчики.
+  ///
+  /// Вызывается из `main.dart` **после `runApp`** и без `await` — см.
+  /// комментарий там. Каждый await здесь ограничен по времени: зависший
+  /// вызов не выбрасывает исключение, и без таймаута он навсегда оставил
+  /// бы `_ready` в false, а токен — незарегистрированным.
+  ///
+  /// Ошибки наружу не отдаём: без пушей приложение работает как обычно.
   static Future<void> init() async {
     try {
+      // Сначала — всё синхронное. Обработчики должны стоять до первого
+      // возможного пуша, и они не зависят от разрешения пользователя.
       FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
+      // Пуш пришёл, когда приложение открыто → показываем локально
+      FirebaseMessaging.onMessage.listen(_showForeground);
+      // Тап по пушу (приложение в фоне) → открыть товар
+      FirebaseMessaging.onMessageOpenedApp
+          .listen((m) => _navigate(m.data['product_id']?.toString()));
+      // Обновление токена
+      FirebaseMessaging.instance.onTokenRefresh.listen(_saveToken);
 
       await _local.initialize(
         const InitializationSettings(
@@ -87,38 +102,50 @@ class PushService {
           iOS: DarwinInitializationSettings(),
         ),
         onDidReceiveNotificationResponse: (resp) => _navigate(resp.payload),
-      );
+      ).timeout(const Duration(seconds: 15));
+
       await _local
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(_channel);
+          ?.createNotificationChannel(_channel)
+          .timeout(const Duration(seconds: 15));
 
-      await FirebaseMessaging.instance.requestPermission();
+      // Механика поднята — дальше всё необязательное. Ставим флаг здесь,
+      // чтобы он не зависел от того, как быстро человек ответит на запрос
+      // разрешения: ждать можно минуту, а токен нужен независимо.
+      _ready = true;
 
-      // Пуш пришёл, когда приложение открыто → показываем локально
-      FirebaseMessaging.onMessage.listen(_showForeground);
-      // Тап по пушу (приложение в фоне) → открыть товар
-      FirebaseMessaging.onMessageOpenedApp
-          .listen((m) => _navigate(m.data['product_id']?.toString()));
+      // Запрос разрешения ждёт ответа человека, поэтому срок щедрый.
+      await FirebaseMessaging.instance
+          .requestPermission()
+          .timeout(const Duration(minutes: 2));
+
       // Запуск из «холодного» состояния по тапу на пуш
-      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      final initial = await FirebaseMessaging.instance
+          .getInitialMessage()
+          .timeout(const Duration(seconds: 15));
       if (initial != null) {
         _navigate(initial.data['product_id']?.toString());
       }
-      // Обновление токена
-      FirebaseMessaging.instance.onTokenRefresh.listen(_saveToken);
-
-      _ready = true;
     } catch (e) {
-      debugPrint('PushService.init: пуши не настроены ($e)');
+      debugPrint('PushService.init: пуши настроены не полностью ($e)');
     }
+
+    // Токен сохраняем в любом случае, если вход уже состоялся: слушатель
+    // авторизации в main.dart мог сработать раньше, чем поднялась эта
+    // механика, и тогда его вызов syncToken() вышел вхолостую.
+    await syncToken();
   }
 
   /// Сохранить токен текущего устройства в Supabase (после входа).
   static Future<void> syncToken() async {
     if (!_ready) return;
     try {
-      final token = await FirebaseMessaging.instance.getToken();
+      // Таймаут: на iOS getToken() ждёт, пока система выдаст APNs-токен,
+      // и без ключа в Firebase или без разрешения может не ответить вовсе.
+      final token = await FirebaseMessaging.instance
+          .getToken()
+          .timeout(const Duration(seconds: 20));
       if (token != null) await _saveToken(token);
     } catch (e) {
       debugPrint('PushService.syncToken: $e');
@@ -137,11 +164,17 @@ class PushService {
       );
     }
     try {
-      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      // Таймауты и здесь: эту проверку рисует экран настроек, и зависший
+      // вызов оставил бы строку состояния пустой навсегда.
+      final settings = await FirebaseMessaging.instance
+          .getNotificationSettings()
+          .timeout(const Duration(seconds: 10));
       final allowed =
           settings.authorizationStatus == AuthorizationStatus.authorized ||
               settings.authorizationStatus == AuthorizationStatus.provisional;
-      final token = await FirebaseMessaging.instance.getToken();
+      final token = await FirebaseMessaging.instance
+          .getToken()
+          .timeout(const Duration(seconds: 20));
 
       var registered = false;
       if (token != null && supabase.auth.currentUser != null) {
