@@ -1287,17 +1287,92 @@ class _BrandsTab extends ConsumerWidget {
       child: AsyncValueView<List<Brand>>(
         value: list,
         onRetry: () => ref.invalidate(adminBrandsProvider),
-        isEmpty: (d) => d.isEmpty,
-        empty: const _Empty('Марок пока нет.\nОни появляются, когда '
-            'поставщик впишет марку в карточку товара.'),
+        // Пустой список — не повод прятать кнопку «завести марку»:
+        // именно с пустого списка её и хочется нажать.
         data: (all) => ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          itemCount: all.length,
-          itemBuilder: (_, i) => _BrandCard(brand: all[i], all: all),
+          itemCount: all.length + 1,
+          itemBuilder: (_, i) => i == 0
+              ? _AddBrandTile(existing: all)
+              : _BrandCard(brand: all[i - 1], all: all),
         ),
       ),
     );
   }
+}
+
+/// Завести марку заранее, не дожидаясь товара с ней.
+class _AddBrandTile extends ConsumerWidget {
+  const _AddBrandTile({required this.existing});
+  final List<Brand> existing;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: OutlinedButton.icon(
+        onPressed: () => _createBrand(context, ref),
+        icon: const Icon(Icons.add, size: 18),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(46),
+          foregroundColor: c.accent,
+          side: BorderSide(color: c.line),
+        ),
+        label: Text(existing.isEmpty
+            ? 'Завести первую марку'
+            : 'Завести марку'),
+      ),
+    );
+  }
+}
+
+void _createBrand(BuildContext context, WidgetRef ref) {
+  final controller = TextEditingController();
+  showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => AlertDialog(
+      title: const Text('Новая марка'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Название',
+              hintText: 'Knauf',
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Товаров у неё пока не будет — она появится в подсказках, '
+            'когда поставщик начнёт заполнять поле «Марка».',
+            style: TextStyle(fontSize: 12, color: context.colors.gray),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Отмена')),
+        FilledButton(
+          onPressed: () {
+            final name = controller.text.trim();
+            Navigator.pop(dialogCtx);
+            if (name.isEmpty) return;
+            _runBrandAction(context, ref, () async {
+              await ref.read(adminRepositoryProvider).createBrand(name);
+              return 'Марка «$name» заведена';
+            });
+          },
+          child: const Text('Завести'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _BrandCard extends ConsumerWidget {
