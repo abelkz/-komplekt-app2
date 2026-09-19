@@ -75,6 +75,21 @@ bool needsAccount(String location) =>
     location == Routes.admin ||
     location == '/pro';
 
+/// Куда вернуться после онбординга или входа.
+///
+/// Пустой `from` — значит человек пришёл сам, без ссылки: ведём на главную.
+/// Отдельно отсекаем сам онбординг и корень: попасть туда «обратно» значит
+/// закольцевать переход и повесить приложение на белом экране.
+@visibleForTesting
+String backTo(String? from) {
+  if (from == null || from.isEmpty) return Routes.home;
+  final target = Uri.decodeComponent(from);
+  if (target == '/' || target.startsWith(Routes.onboarding)) {
+    return Routes.home;
+  }
+  return target;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   // Мост Riverpod -> Listenable: пересчитываем redirect при смене сессии/настроек
   final refresh = ValueNotifier(0);
@@ -104,9 +119,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       // перехватит переход и человек не задаст новый пароль.
       if (loc == Routes.newPassword) return null;
 
-      // 1. Сначала онбординг (выбор города)
+      // 1. Сначала онбординг (выбор города).
+      //
+      //    Исходный адрес несём с собой в ?from — так же, как это уже сделано
+      //    для входа. Без этого ссылка на товар, присланная человеку, который
+      //    открывает приложение впервые, приводила его на выбор города, а
+      //    оттуда на главную: товар, ради которого ссылку и прислали,
+      //    терялся по дороге. Проверено на вебе 19.09.2026.
       if (!settings.onboardingDone) {
-        return loc == Routes.onboarding ? null : Routes.onboarding;
+        if (loc == Routes.onboarding) return null;
+        final from = Uri.encodeComponent(state.uri.toString());
+        return '${Routes.onboarding}?from=$from';
       }
       // 2. Каталог, поиск, карта и карточки товаров открыты гостю: человек
       //    должен увидеть, что внутри, прежде чем его просят регистрироваться.
@@ -122,12 +145,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       //    /auth на /home и гостя тоже, то есть открыть вход было нельзя
       //    вообще — ни кнопкой в «Избранном», ни из профиля.
       if (signedIn && loc == Routes.auth) {
-        final from = state.uri.queryParameters['from'];
-        return (from == null || from.isEmpty)
-            ? Routes.home
-            : Uri.decodeComponent(from);
+        return backTo(state.uri.queryParameters['from']);
       }
-      if (loc == Routes.onboarding) return Routes.home;
+      // 4. Город выбран — уводим с онбординга туда, зачем пришли.
+      if (loc == Routes.onboarding) {
+        return backTo(state.uri.queryParameters['from']);
+      }
       return null;
     },
     routes: [
