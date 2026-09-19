@@ -16,6 +16,8 @@ class Offer {
     this.supplierVerified = false,
     this.supplierPro = false,
     this.promotedUntil,
+    this.stockQty,
+    this.leadTimeDays,
   });
 
   final String? id;
@@ -44,8 +46,27 @@ class Offer {
   /// На порядок в шкале цен внутри карточки НЕ влияет — там только цена.
   final DateTime? promotedUntil;
 
+  /// Остаток у этого поставщика в единицах товара (миграция 0029).
+  /// null — поставщик не указал; это не то же самое, что ноль.
+  final double? stockQty;
+
+  /// Через сколько дней привезёт: 0 — со склада, null — не указано.
+  final int? leadTimeDays;
+
   bool get isPromoted =>
       promotedUntil != null && promotedUntil!.isAfter(DateTime.now());
+
+  /// «со склада» / «3 дня» — то, что реально сказал поставщик.
+  /// null, если не сказал ничего: врать про сроки нельзя, по ним
+  /// планируют работы на объекте.
+  String? get leadTimeLabel {
+    final d = leadTimeDays;
+    if (d == null) return null;
+    if (d == 0) return 'со склада';
+    if (d == 1) return '1 день';
+    if (d >= 2 && d <= 4) return '$d дня';
+    return '$d дней';
+  }
 
   /// Насколько изменилась цена, в процентах. Отрицательное — подешевело.
   /// null, если прежней цены нет или она не изменилась.
@@ -83,6 +104,8 @@ class Offer {
       promotedUntil: m['promoted_until'] != null
           ? DateTime.tryParse(m['promoted_until'].toString())
           : null,
+      stockQty: (m['stock_qty'] as num?)?.toDouble(),
+      leadTimeDays: (m['lead_time_days'] as num?)?.toInt(),
     );
   }
 }

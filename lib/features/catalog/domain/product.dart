@@ -37,6 +37,9 @@ class Product {
     this.rating = 0,
     this.images = const [],
     this.offers = const [],
+    this.packQty,
+    this.warrantyMonths,
+    this.attrs = const [],
   });
 
   final String id;
@@ -50,6 +53,29 @@ class Product {
   final double rating;
   final List<ProductImage> images;
   final List<Offer> offers;
+
+  /// Сколько единиц в одной упаковке: м² в коробке плитки, штук в пачке
+  /// (миграция 0029). Без этого «нужно 38 м²» не превращается в
+  /// «купить 7 коробок» — а покупают именно коробками.
+  final double? packQty;
+
+  /// Гарантия в месяцах. Именно в месяцах: у смесителей бывает 6 и 18.
+  final int? warrantyMonths;
+
+  /// Технические признаки: «Матовая фактура», «R10», «Ректифицированный».
+  /// Список, а не колонки: у плитки и краски наборы разные, таблица одна.
+  final List<String> attrs;
+
+  /// «5 лет», «18 месяцев» — как человек это произносит.
+  String? get warrantyLabel {
+    final m = warrantyMonths;
+    if (m == null || m <= 0) return null;
+    if (m % 12 != 0) return '$m мес.';
+    final years = m ~/ 12;
+    if (years == 1) return '1 год';
+    if (years >= 2 && years <= 4) return '$years года';
+    return '$years лет';
+  }
 
   // ── Вычисляемые поля для UI (как в прототипе) ──
 
@@ -128,7 +154,30 @@ class Product {
               ?.map((e) => Offer.fromMap(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      packQty: (m['pack_qty'] as num?)?.toDouble(),
+      warrantyMonths: (m['warranty_months'] as num?)?.toInt(),
+      attrs: _attrs(m['attrs']),
     );
+  }
+
+  /// Признаки приходят из jsonb. Принимаем и список строк, и объект
+  /// «ключ: значение» — поставщики заполняют по-разному, а ронять весь
+  /// каталог из-за формата одного поля нельзя.
+  static List<String> _attrs(Object? raw) {
+    if (raw is List) {
+      return [
+        for (final e in raw)
+          if (e != null && e.toString().trim().isNotEmpty) e.toString().trim(),
+      ];
+    }
+    if (raw is Map) {
+      return [
+        for (final e in raw.entries)
+          if (e.value != null && e.value.toString().trim().isNotEmpty)
+            '${e.key}: ${e.value}',
+      ];
+    }
+    return const [];
   }
 
   /// Фото товара. Сначала берём галерею product_images, а если её нет —
