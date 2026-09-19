@@ -146,6 +146,8 @@ class SupplierRow {
     this.verified = false,
     this.status,
     this.lastPriceAt,
+    this.blockedUntil,
+    this.blockReason,
   });
 
   final String id;
@@ -164,8 +166,27 @@ class SupplierRow {
   /// покупатель звонит по цене, которой уже нет.
   final DateTime? lastPriceAt;
 
+  /// До какого момента компания скрыта (миграция 0032). null — не
+  /// заблокирована. Далёкая дата — бессрочно: в базе там `infinity`.
+  final DateTime? blockedUntil;
+
+  /// За что заблокирована. Показываем и админу, и самому поставщику:
+  /// человек должен понимать причину, иначе просто уйдёт.
+  final String? blockReason;
+
   bool get isPro =>
       plan == 'pro' && (planUntil == null || planUntil!.isAfter(DateTime.now()));
+
+  /// Заблокирована прямо сейчас. Прошедший срок снимает блокировку сам,
+  /// поэтому проверяем дату, а не просто её наличие.
+  bool get isBlocked =>
+      blockedUntil != null && blockedUntil!.isAfter(DateTime.now());
+
+  /// Бессрочная блокировка. В базе это `infinity`, который приезжает сюда
+  /// либо как неразобранная дата, либо как год из далёкого будущего —
+  /// показывать «до 31.12.294276» нельзя, это выглядит как поломка.
+  bool get blockedForever =>
+      isBlocked && blockedUntil!.year > DateTime.now().year + 50;
 
   factory SupplierRow.fromMap(Map<String, dynamic> m) => SupplierRow(
         id: m['supplier_id'].toString(),
@@ -184,7 +205,19 @@ class SupplierRow {
         lastPriceAt: m['last_price_at'] == null
             ? null
             : DateTime.tryParse(m['last_price_at'].toString()),
+        // 'infinity' из Postgres DateTime.tryParse не разберёт и вернёт null —
+        // бессрочная блокировка выглядела бы как её отсутствие. Подменяем
+        // такой случай далёкой датой: она и означает «бессрочно».
+        blockedUntil: _until(m['blocked_until']),
+        blockReason: m['block_reason'] as String?,
       );
+
+  static DateTime? _until(Object? raw) {
+    if (raw == null) return null;
+    final s = raw.toString();
+    if (s == 'infinity') return DateTime(9999);
+    return DateTime.tryParse(s);
+  }
 }
 
 /// Всё, что администратор делает с заявками. Права проверяет база:
@@ -244,6 +277,48 @@ class AdminRepository {
       ];
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить категории');
+    }
+  }
+
+  // ──────────────── Блокировка и удаление компании ────────────────
+  //
+  // Всё решает база (миграция 0032): функции security definer, каждая сама
+  // проверяет админа. Отсюда — только вызов и понятный текст ошибки.
+
+  /// Скрыть компанию из каталога. [days] = null — бессрочно.
+  /// Возвращает дату, до которой скрыта.
+  Future<DateTime?> blockSupplier(String supplierId,
+      {int? days, String? reason}) async {
+    try {
+      final res = await supabase.rpc('admin_block_supplier', params: {
+        'p_supplier': int.tryParse(supplierId) ?? supplierId,
+        'p_days': days,
+        'p_reason': reason,
+      });
+      return res == null ? null : DateTime.tryParse(res.toString());
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось заблокировать компанию');
+    }
+  }
+
+  Future<void> unblockSupplier(String supplierId) async {
+    try {
+      await supabase.rpc('admin_unblock_supplier',
+          params: {'p_supplier': int.tryParse(supplierId) ?? supplierId});
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось снять блокировку');
+    }
+  }
+
+  /// Удалить компанию. Возвращает, сколько цен при этом снесено.
+  /// Товары остаются: карточка общая, на неё ссылаются чужие цены.
+  Future<int> deleteSupplier(String supplierId) async {
+    try {
+      final res = await supabase.rpc('admin_delete_supplier',
+          params: {'p_supplier': int.tryParse(supplierId) ?? supplierId});
+      return (res as num?)?.toInt() ?? 0;
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось удалить компанию');
     }
   }
 
