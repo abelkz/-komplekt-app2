@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/pricing.dart';
@@ -7,6 +7,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../auth/domain/app_user.dart';
+import '../../catalog/presentation/catalog_providers.dart';
+import '../../catalog/presentation/widgets/quick_filters.dart';
 import '../data/admin_repository.dart';
 import 'admin_providers.dart';
 import 'widgets/supplier_actions_sheet.dart';
@@ -26,7 +28,7 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
@@ -38,6 +40,9 @@ class AdminScreen extends ConsumerWidget {
             Tab(text: 'Тарифы'),
             Tab(text: 'Буст'),
             Tab(text: 'Жалобы'),
+            // Марки последними: это наведение порядка, а не разбор дел —
+            // сюда заходят по необходимости, а не каждый день.
+            Tab(text: 'Марки'),
           ]),
         ),
         body: const TabBarView(children: [
@@ -46,6 +51,7 @@ class AdminScreen extends ConsumerWidget {
           _PlansTab(),
           _BoostTab(),
           _ReportsTab(),
+          _BrandsTab(),
         ]),
       ),
     );
@@ -1258,4 +1264,253 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
         'reviewed' => 'разобрано',
         _ => s,
       };
+}
+
+// ──────────────────────────── Марки ────────────────────────────
+
+/// Наведение порядка в марках (миграция 0035).
+///
+/// Марку заводит любой поставщик, вписав её в форму товара, а нормализация
+/// в `set_product_brand` ловит только регистр и пробелы. Кириллическую
+/// «Керама Марацци» от латинской «Kerama Marazzi» она не отличит, а
+/// латинскую C от кириллической С в «Cersanit» не отличит и человек —
+/// поэтому склейка дубликатов нужна вручную.
+class _BrandsTab extends ConsumerWidget {
+  const _BrandsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(adminBrandsProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(adminBrandsProvider),
+      child: AsyncValueView<List<Brand>>(
+        value: list,
+        onRetry: () => ref.invalidate(adminBrandsProvider),
+        isEmpty: (d) => d.isEmpty,
+        empty: const _Empty('Марок пока нет.\nОни появляются, когда '
+            'поставщик впишет марку в карточку товара.'),
+        data: (all) => ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          itemCount: all.length,
+          itemBuilder: (_, i) => _BrandCard(brand: all[i], all: all),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandCard extends ConsumerWidget {
+  const _BrandCard({required this.brand, required this.all});
+  final Brand brand;
+
+  /// Весь список нужен для объединения: выбирать не из чего, если знать
+  /// только саму марку.
+  final List<Brand> all;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        title: Text(brand.name,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          brand.isEmpty ? 'нет товаров' : _brandProducts(brand.products),
+          style: TextStyle(fontSize: 12, color: brand.isEmpty ? c.orange : c.gray),
+        ),
+        trailing: Icon(Icons.more_horiz, color: c.faint),
+        onTap: () => _showBrandActions(context, ref, brand, all),
+      ),
+    );
+  }
+}
+
+/// Склонение берём из каталога, а не пишем второе такое же: две копии
+/// этой логики неизбежно разъедутся.
+String _brandProducts(int n) => '$n ${productsPlural(n)}';
+
+void _showBrandActions(
+    BuildContext context, WidgetRef ref, Brand brand, List<Brand> all) {
+  showModalBottomSheet(
+    context: context,
+    builder: (sheetCtx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(brand.name,
+                style:
+                    const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Переименовать'),
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              _renameBrand(context, ref, brand);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.merge_outlined),
+            title: const Text('Объединить с другой'),
+            subtitle: const Text('товары переедут, эта марка исчезнет'),
+            enabled: all.length > 1,
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              _mergeBrand(context, ref, brand, all);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.delete_outline,
+                color: brand.isEmpty ? context.colors.red : null),
+            title: const Text('Удалить'),
+            // База откажет всё равно, но объяснить причину лучше здесь,
+            // чем показывать ошибку после нажатия.
+            subtitle: brand.isEmpty
+                ? null
+                : const Text('нельзя: у марки есть товары'),
+            enabled: brand.isEmpty,
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              _deleteBrand(context, ref, brand);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> _runBrandAction(
+  BuildContext context,
+  WidgetRef ref,
+  Future<String> Function() action,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    final text = await action();
+    ref.invalidate(adminBrandsProvider);
+    // Марка видна в карточке товара и в фильтрах каталога — их тоже
+    // надо перечитать, иначе останется старое название.
+    ref.invalidate(allBrandsProvider);
+    messenger.showSnackBar(SnackBar(content: Text(text)));
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+  }
+}
+
+void _renameBrand(BuildContext context, WidgetRef ref, Brand brand) {
+  final controller = TextEditingController(text: brand.name);
+  showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => AlertDialog(
+      title: const Text('Переименовать марку'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(labelText: 'Название'),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Отмена')),
+        FilledButton(
+          onPressed: () {
+            final name = controller.text.trim();
+            Navigator.pop(dialogCtx);
+            if (name.isEmpty || name == brand.name) return;
+            _runBrandAction(context, ref, () async {
+              await ref.read(adminRepositoryProvider).renameBrand(brand.id, name);
+              return 'Марка переименована в «$name»';
+            });
+          },
+          child: const Text('Сохранить'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _mergeBrand(
+    BuildContext context, WidgetRef ref, Brand from, List<Brand> all) {
+  final others = all.where((b) => b.id != from.id).toList();
+  showModalBottomSheet(
+    context: context,
+    builder: (sheetCtx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text('«${from.name}» переедет в:',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Товары сменят марку, а «${from.name}» исчезнет. Отменить '
+              'одним действием нельзя.',
+              style: TextStyle(fontSize: 12, color: context.colors.gray),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: others.length,
+              itemBuilder: (_, i) => ListTile(
+                title: Text(others[i].name),
+                subtitle: Text(_brandProducts(others[i].products),
+                    style: const TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _runBrandAction(context, ref, () async {
+                    final n = await ref
+                        .read(adminRepositoryProvider)
+                        .mergeBrands(from: from.id, into: others[i].id);
+                    return n == 0
+                        ? 'Марка «${from.name}» удалена, товаров у неё не было'
+                        : 'Переехало товаров: $n';
+                  });
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+void _deleteBrand(BuildContext context, WidgetRef ref, Brand brand) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => AlertDialog(
+      title: const Text('Удалить марку?'),
+      content: Text('«${brand.name}» будет удалена. Товаров у неё нет.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Отмена')),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: context.colors.red),
+          onPressed: () {
+            Navigator.pop(dialogCtx);
+            _runBrandAction(context, ref, () async {
+              await ref.read(adminRepositoryProvider).deleteBrand(brand.id);
+              return 'Марка «${brand.name}» удалена';
+            });
+          },
+          child: const Text('Удалить'),
+        ),
+      ],
+    ),
+  );
 }

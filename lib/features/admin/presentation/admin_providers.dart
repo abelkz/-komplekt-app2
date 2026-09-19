@@ -23,6 +23,9 @@ final boostOrdersProvider = FutureProvider<List<SubRequest>>(
 final contentReportsProvider = FutureProvider<List<ContentReport>>(
     (ref) => ref.read(adminRepositoryProvider).reports());
 
+final adminBrandsProvider =
+    FutureProvider<List<Brand>>((ref) => ref.read(adminRepositoryProvider).brands());
+
 // ─────────────────────────── Статистика ───────────────────────────
 
 /// За сколько дней смотрим сводку. Общий для всей вкладки: переключил
