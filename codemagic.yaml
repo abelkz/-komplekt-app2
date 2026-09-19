@@ -75,9 +75,15 @@ workflows:
           # Доставка пуша, когда приложение свёрнуто или выгружено. Без этого
           # режима система будит приложение только по тапу, а «тихие» пуши
           # (content-available) не доходят вовсе.
+          #
+          # Под тем же флагом, что и aps-environment: заявлять фоновый режим
+          # для пушей в приложении, которое не умеет их получать, — повод
+          # для вопросов на ревью Apple.
           /usr/libexec/PlistBuddy -c "Delete :UIBackgroundModes" "$P" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$P"
-          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string remote-notification" "$P"
+          if [ "$PUSH_READY" = "1" ]; then
+            /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$P"
+            /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string remote-notification" "$P"
+          fi
           /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$P"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string tel" "$P"
@@ -115,17 +121,31 @@ workflows:
         # Возможность «Sign in with Apple» требует entitlement в проекте.
         # Создаём файл и прописываем путь к нему во все конфигурации Runner.
         #
-        # aps-environment здесь не менее важен: без него iOS вообще не выдаёт
-        # APNs-токен, FirebaseMessaging.getToken() возвращает null, и пуши
-        # молча не приходят — ровно то, из-за чего device_tokens была пуста.
-        # Значение production: этот workflow собирает IOS_APP_STORE, а
-        # development-токены с ним несовместимы.
+        # aps-environment без него iOS вообще не выдаёт APNs-токен,
+        # FirebaseMessaging.getToken() возвращает null, и пуши молча не
+        # приходят. Но добавлять его можно только после того, как у App ID
+        # kz.komplekt.app в Apple Developer включена возможность Push
+        # Notifications: профиль подписи выпускается по возможностям App ID,
+        # и с лишним entitlement сборка падает на подписи —
+        #   Provisioning profile ... doesn't include the aps-environment
+        #   entitlement
+        # (проверено на сборке 26, 19.09.2026).
+        #
+        # Поэтому флаг PUSH_READY=1 в группе переменных «supabase».
+        # Ставить его вместе с настройкой Firebase, не раньше:
+        # порядок — сначала возможность у App ID, потом флаг, потом сборка.
+        # Подробности — в ПУШИ_И_ФУНКЦИИ.md.
         script: |
           set -e
           printf '%s' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>' > ios/Runner/Runner.entitlements
           /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin array" ios/Runner/Runner.entitlements
           /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin:0 string Default" ios/Runner/Runner.entitlements
-          /usr/libexec/PlistBuddy -c "Add :aps-environment string production" ios/Runner/Runner.entitlements
+          if [ "$PUSH_READY" = "1" ]; then
+            /usr/libexec/PlistBuddy -c "Add :aps-environment string production" ios/Runner/Runner.entitlements
+            echo "→ aps-environment добавлен"
+          else
+            echo "→ PUSH_READY не задан — собираем без aps-environment (пуши на iOS работать не будут)"
+          fi
           sed -i '' -E 's#(PRODUCT_BUNDLE_IDENTIFIER = kz\.komplekt\.app;)#\1 CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;#g' \
             ios/Runner.xcodeproj/project.pbxproj
 
