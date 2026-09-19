@@ -9,6 +9,12 @@ import '../../../core/widgets/async_value_view.dart';
 import '../../auth/domain/app_user.dart';
 import '../data/admin_repository.dart';
 import 'admin_providers.dart';
+import 'widgets/supplier_actions_sheet.dart';
+
+/// Короткая дата для подписей в списке.
+String _date(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}.'
+    '${d.month.toString().padLeft(2, '0')}.${d.year}';
 
 /// Экран администратора: заявки поставщиков и заявки на платный тариф.
 /// Открывается только с учётной записи с ролью admin.
@@ -414,7 +420,16 @@ class _SupplierStatsList extends StatelessWidget {
           isEmpty: (d) => d.isEmpty,
           empty: const _Empty('Поставщиков пока нет'),
           data: (rows) => Column(
-            children: [for (final s in rows) _SupplierStatCard(s: s)],
+            children: [
+              for (final s in rows)
+                Builder(
+                  builder: (context) => InkWell(
+                    onTap: () => showSupplierActions(context, s),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                    child: _SupplierStatCard(s: s),
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -434,7 +449,9 @@ class _SupplierStatCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: c.card,
-        border: Border.all(color: c.line),
+        // Заблокированную обводим красным: в списке из двух десятков строк
+        // подпись мелким шрифтом можно и не заметить.
+        border: Border.all(color: s.isBlocked ? c.red : c.line),
         borderRadius: BorderRadius.circular(AppRadii.md),
       ),
       child: Column(
@@ -442,6 +459,11 @@ class _SupplierStatCard extends StatelessWidget {
         children: [
           Row(
             children: [
+              if (s.isBlocked)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Icon(Icons.block, size: 15, color: c.red),
+                ),
               Expanded(
                 child: Text(s.name.isEmpty ? 'без названия' : s.name,
                     maxLines: 1,
@@ -491,6 +513,20 @@ class _SupplierStatCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text('Цены ни разу не обновлялись',
                 style: TextStyle(fontSize: 11, color: c.red)),
+          ],
+          if (s.isBlocked) ...[
+            const SizedBox(height: 6),
+            Text(
+              [
+                s.blockedForever
+                    ? 'Заблокирована бессрочно'
+                    : 'Заблокирована до ${_date(s.blockedUntil!)}',
+                if (s.blockReason != null && s.blockReason!.isNotEmpty)
+                  s.blockReason!,
+              ].join(' · '),
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600, color: c.red),
+            ),
           ],
         ],
       ),
