@@ -1076,9 +1076,21 @@ class _PushStatusLine extends StatefulWidget {
 }
 
 class _PushStatusLineState extends State<_PushStatusLine> {
-  // Future считается один раз, а не в build: лист перестраивается на каждом
-  // щелчке тумблера, и запрос уходил бы заново, а строка — мигала бы.
-  late final Future<PushStatus> _future = PushService.status();
+  // Future в поле, а не в build: лист перестраивается на каждом щелчке
+  // тумблера, и запрос уходил бы заново, а строка — мигала бы. Не final:
+  // кнопка «Повторить» заменяет его новым, чтобы перечитать состояние.
+  Future<PushStatus> _future = PushService.status();
+  bool _busy = false;
+
+  Future<void> _retry() async {
+    setState(() => _busy = true);
+    await PushService.retry();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _future = PushService.status();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1090,23 +1102,57 @@ class _PushStatusLineState extends State<_PushStatusLine> {
         // Пока проверяем — молчим: мигнуть предупреждением, которое через
         // полсекунды сменится на «всё хорошо», хуже, чем не показать ничего.
         if (status == null) return const SizedBox(height: 18);
-        return Row(
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              status.ok
-                  ? Icons.check_circle_outline_rounded
-                  : Icons.error_outline_rounded,
-              size: 16,
-              color: status.ok ? c.gray : c.orange,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  status.ok
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.error_outline_rounded,
+                  size: 16,
+                  color: status.ok ? c.gray : c.orange,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    status.label,
+                    style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                status.label,
-                style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
+            // Кнопку показываем только при поломке: регистрация идёт один
+            // раз за запуск и упирается в сеть и в ответ APNs, так что
+            // «попробовать ещё раз» — единственное осмысленное действие,
+            // которое здесь вообще доступно человеку.
+            if (!status.ok)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _busy ? null : _retry,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 16),
+                  label: Text(_busy ? 'Проверяю…' : 'Повторить'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: c.orange,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
-            ),
           ],
         );
       },
