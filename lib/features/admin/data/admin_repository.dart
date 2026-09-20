@@ -695,4 +695,133 @@ class AdminRepository {
       throw mapError(e, fallback: 'Не удалось удалить отзыв');
     }
   }
+
+  // ──────────────────────────── Рассылка ────────────────────────────
+  //
+  // Объявление всем, у кого установлено приложение. Отправляет Edge
+  // Function `send-broadcast`: она ходит в базу с service_role и сама
+  // проверяет, что зовущий — администратор. Клиенту здесь не доверяют
+  // ничего, кроме текста.
+
+  /// Сколько устройств получит рассылку (миграция 0039).
+  /// Показывается в подтверждении: отправку не отозвать.
+  Future<int> broadcastAudience(String segment) async {
+    try {
+      final res = await supabase
+          .rpc('admin_broadcast_audience', params: {'p_segment': segment});
+      return (res as num?)?.toInt() ?? 0;
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось посчитать получателей');
+    }
+  }
+
+  /// Журнал отправок — что и когда уже рассылали.
+  Future<List<Broadcast>> broadcasts({int limit = 30}) async {
+    try {
+      final rows = await supabase
+          .from('broadcasts')
+          .select('id,title,body,segment,recipients,delivered,failed,status,'
+              'created_at')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          Broadcast.fromMap(r),
+      ];
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось загрузить историю рассылок');
+    }
+  }
+
+  /// Разослать объявление. Возвращает, скольким доставлено.
+  Future<BroadcastResult> sendBroadcast({
+    required String title,
+    required String body,
+    required String segment,
+  }) async {
+    try {
+      final res = await supabase.functions.invoke(
+        'send-broadcast',
+        body: {'title': title, 'body': body, 'segment': segment},
+      );
+      final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+      // Функция отвечает 4xx/5xx с полем error — supabase-js не всегда
+      // превращает это в исключение, поэтому разбираем сами.
+      final err = data['error'];
+      if (err != null) throw Failure(err.toString());
+      return BroadcastResult(
+        recipients: (data['recipients'] as num?)?.toInt() ?? 0,
+        delivered: (data['delivered'] as num?)?.toInt() ?? 0,
+        failed: (data['failed'] as num?)?.toInt() ?? 0,
+      );
+    } catch (e) {
+      if (e is Failure) rethrow;
+      // Самая частая причина на сегодня — функция не задеплоена. Общее
+      // «не удалось отправить» отправило бы искать поломку в приложении.
+      final text = e.toString();
+      if (text.contains('404') || text.contains('NOT_FOUND')) {
+        throw const Failure(
+            'Функция send-broadcast не задеплоена в Supabase — рассылать '
+            'пока нечем');
+      }
+      throw mapError(e, fallback: 'Не удалось отправить рассылку');
+    }
+  }
+}
+
+/// Итог отправки: сколько было получателей и скольким дошло.
+class BroadcastResult {
+  const BroadcastResult({
+    required this.recipients,
+    required this.delivered,
+    required this.failed,
+  });
+
+  final int recipients;
+  final int delivered;
+  final int failed;
+}
+
+/// Запись журнала рассылок (таблица broadcasts, миграция 0039).
+class Broadcast {
+  const Broadcast({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.segment,
+    required this.recipients,
+    required this.delivered,
+    required this.failed,
+    required this.status,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String title;
+  final String body;
+  final String segment;
+  final int recipients;
+  final int delivered;
+  final int failed;
+  final String status;
+  final DateTime createdAt;
+
+  String get segmentLabel => switch (segment) {
+        'suppliers' => 'поставщикам',
+        'clients' => 'клиентам',
+        _ => 'всем',
+      };
+
+  factory Broadcast.fromMap(Map<String, dynamic> m) => Broadcast(
+        id: (m['id'] as num).toInt(),
+        title: m['title'] as String? ?? '',
+        body: m['body'] as String? ?? '',
+        segment: m['segment'] as String? ?? 'all',
+        recipients: (m['recipients'] as num?)?.toInt() ?? 0,
+        delivered: (m['delivered'] as num?)?.toInt() ?? 0,
+        failed: (m['failed'] as num?)?.toInt() ?? 0,
+        status: m['status'] as String? ?? 'done',
+        createdAt:
+            DateTime.tryParse(m['created_at']?.toString() ?? '') ?? DateTime.now(),
+      );
 }
