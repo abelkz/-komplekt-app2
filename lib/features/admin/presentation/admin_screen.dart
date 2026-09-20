@@ -28,7 +28,7 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 6,
+      length: 7,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
@@ -43,6 +43,10 @@ class AdminScreen extends ConsumerWidget {
             // Марки последними: это наведение порядка, а не разбор дел —
             // сюда заходят по необходимости, а не каждый день.
             Tab(text: 'Марки'),
+            // Рассылка в самом конце нарочно: это единственное действие в
+            // панели, которое уходит наружу к живым людям и не отменяется.
+            // Незачем держать её под пальцем рядом с повседневным разбором.
+            Tab(text: 'Рассылка'),
           ]),
         ),
         body: const TabBarView(children: [
@@ -52,6 +56,7 @@ class AdminScreen extends ConsumerWidget {
           _BoostTab(),
           _ReportsTab(),
           _BrandsTab(),
+          _BroadcastTab(),
         ]),
       ),
     );
@@ -1588,4 +1593,267 @@ void _deleteBrand(BuildContext context, WidgetRef ref, Brand brand) {
       ],
     ),
   );
+}
+
+// ──────────────────────────── Рассылка ────────────────────────────
+
+/// Объявление всем, у кого установлено приложение.
+///
+/// Единственное место в панели, где действие уходит наружу к живым людям
+/// и не отменяется: отправленный пуш не отозвать и не отредактировать.
+/// Поэтому здесь всё устроено медленнее обычного — видно, скольким уйдёт,
+/// показан предпросмотр, и отправка идёт через подтверждение.
+class _BroadcastTab extends ConsumerStatefulWidget {
+  const _BroadcastTab();
+
+  @override
+  ConsumerState<_BroadcastTab> createState() => _BroadcastTabState();
+}
+
+class _BroadcastTabState extends ConsumerState<_BroadcastTab> {
+  final _title = TextEditingController();
+  final _body = TextEditingController();
+  String _segment = 'all';
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final audience = ref.watch(broadcastAudienceProvider(_segment));
+    final history = ref.watch(adminBroadcastsProvider);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      children: [
+        TextField(
+          controller: _title,
+          maxLength: 60,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Заголовок',
+            hintText: 'Новые поставщики в Астане',
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        TextField(
+          controller: _body,
+          maxLength: 160,
+          maxLines: 3,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Текст',
+            hintText: 'В каталоге появились цены на ламинат от пяти компаний',
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 6),
+        Text('Кому', style: TextStyle(fontSize: 12, color: c.gray)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final s in [
+              ('all', 'Всем'),
+              ('clients', 'Клиентам'),
+              ('suppliers', 'Поставщикам'),
+            ])
+              ChoiceChip(
+                label: Text(s.$2),
+                selected: _segment == s.$1,
+                onSelected: (_) => setState(() => _segment = s.$1),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // Число получателей — главное, что надо увидеть до нажатия.
+        // Ноль здесь не поломка: до выката новой версии в стор почти ни у
+        // кого нет регистрации в FCM, и об этом честнее сказать прямо.
+        audience.when(
+          loading: () => Text('Считаю получателей…',
+              style: TextStyle(fontSize: 12, color: c.gray)),
+          error: (e, _) => Text(_msg(e),
+              style: TextStyle(fontSize: 12, color: c.orange)),
+          data: (n) => Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(n == 0 ? Icons.error_outline_rounded : Icons.people_outline,
+                  size: 16, color: n == 0 ? c.orange : c.gray),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  n == 0
+                      ? 'Ни одного устройства не зарегистрировано. Уведомления '
+                          'приходят только тем, кто поставил версию с рабочими '
+                          'пушами — пока такая версия не выйдет в сторе, '
+                          'рассылать некому.'
+                      : 'Получат $n ${_devices(n)}',
+                  style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: _canSend(audience.valueOrNull) ? _confirmAndSend : null,
+          icon: _sending
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.campaign_outlined, size: 18),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          label: Text(_sending ? 'Отправляю…' : 'Разослать'),
+        ),
+        const SizedBox(height: 26),
+        Text('История', style: TextStyle(fontSize: 12, color: c.gray)),
+        const SizedBox(height: 8),
+        AsyncValueView<List<Broadcast>>(
+          value: history,
+          onRetry: () => ref.invalidate(adminBroadcastsProvider),
+          data: (list) => list.isEmpty
+              ? Text('Пока ничего не рассылали',
+                  style: TextStyle(fontSize: 12, color: c.gray))
+              : Column(
+                  children: [for (final b in list) _BroadcastCard(b: b)],
+                ),
+        ),
+      ],
+    );
+  }
+
+  bool _canSend(int? audience) =>
+      !_sending &&
+      _title.text.trim().isNotEmpty &&
+      _body.text.trim().isNotEmpty &&
+      (audience ?? 0) > 0;
+
+  /// Подтверждение с точным числом получателей и текстом целиком.
+  /// Опечатку в пуше уже не исправить — единственная возможность заметить
+  /// её здесь.
+  Future<void> _confirmAndSend() async {
+    final c = context.colors;
+    final n = ref.read(broadcastAudienceProvider(_segment)).valueOrNull ?? 0;
+    final title = _title.text.trim();
+    final body = _body.text.trim();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Разослать уведомление?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: c.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(body, style: const TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Уйдёт на $n ${_devices(n)}. Отменить или отредактировать '
+              'отправленное уведомление нельзя.',
+              style: TextStyle(fontSize: 12, color: c.gray, height: 1.35),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Отмена')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              child: const Text('Разослать')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _sending = true);
+    try {
+      final res = await ref.read(adminRepositoryProvider).sendBroadcast(
+            title: title,
+            body: body,
+            segment: _segment,
+          );
+      if (!mounted) return;
+      _title.clear();
+      _body.clear();
+      ref.invalidate(adminBroadcastsProvider);
+      ref.invalidate(broadcastAudienceProvider(_segment));
+      messenger.showSnackBar(SnackBar(
+        content: Text(res.failed == 0
+            ? 'Доставлено: ${res.delivered}'
+            : 'Доставлено: ${res.delivered}, не дошло: ${res.failed}'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+}
+
+class _BroadcastCard extends StatelessWidget {
+  const _BroadcastCard({required this.b});
+  final Broadcast b;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(b.title,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(b.body, style: TextStyle(fontSize: 13, color: c.gray)),
+            const SizedBox(height: 8),
+            Text(
+              '${_date(b.createdAt)} · ${b.segmentLabel} · '
+              'доставлено ${b.delivered} из ${b.recipients}'
+              '${b.failed > 0 ? ', не дошло ${b.failed}' : ''}',
+              style: TextStyle(fontSize: 11, color: c.gray),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// «1 устройство», «2 устройства», «5 устройств» — иначе строка про
+/// получателей читается как машинная.
+String _devices(int n) {
+  final d10 = n % 10;
+  final d100 = n % 100;
+  if (d100 >= 11 && d100 <= 14) return 'устройств';
+  if (d10 == 1) return 'устройство';
+  if (d10 >= 2 && d10 <= 4) return 'устройства';
+  return 'устройств';
 }

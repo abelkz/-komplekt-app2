@@ -26,6 +26,19 @@ final contentReportsProvider = FutureProvider<List<ContentReport>>(
 final adminBrandsProvider =
     FutureProvider<List<Brand>>((ref) => ref.read(adminRepositoryProvider).brands());
 
+// ──────────────────────────── Рассылка ────────────────────────────
+
+/// Журнал отправленных объявлений.
+final adminBroadcastsProvider = FutureProvider<List<Broadcast>>(
+    (ref) => ref.read(adminRepositoryProvider).broadcasts());
+
+/// Сколько устройств получит рассылку по выбранному сегменту.
+/// Считается на каждое переключение: аудитория меняется, а показать её
+/// надо до отправки — отозвать пуш нельзя.
+final broadcastAudienceProvider =
+    FutureProvider.family<int, String>((ref, segment) =>
+        ref.read(adminRepositoryProvider).broadcastAudience(segment));
+
 // ─────────────────────────── Статистика ───────────────────────────
 
 /// За сколько дней смотрим сводку. Общий для всей вкладки: переключил
