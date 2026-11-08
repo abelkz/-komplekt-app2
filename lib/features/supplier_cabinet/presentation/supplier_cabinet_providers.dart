@@ -181,26 +181,28 @@ class CabinetController extends AsyncNotifier<void> {
   Future<bool> deleteProduct(String productId) => _run(
       () => ref.read(supplierCabinetRepositoryProvider).deleteProduct(productId));
 
-  /// Импорт прайса. Возвращает число загруженных позиций или -1 при ошибке.
-  Future<int> importPrice({
+  /// Импорт прайса. Возвращает итог загрузки или null, если не удалось
+  /// вообще ничего (причина — в state.error).
+  Future<ImportResult?> importPrice({
     required List<PriceRow> rows,
     required String categorySlug,
     required String supplierId,
   }) async {
     state = const AsyncLoading();
     try {
-      final n = await ref.read(supplierCabinetRepositoryProvider).importPrice(
-            rows: rows,
-            categorySlug: categorySlug,
-            supplierId: supplierId,
-          );
+      final repo = ref.read(supplierCabinetRepositoryProvider);
+      final res = await repo.importPrice(
+        rows: rows,
+        categorySlug: categorySlug,
+        supplierId: supplierId,
+      );
       ref.invalidate(myProductsProvider);
       ref.invalidate(myStatsProvider);
       state = const AsyncData(null);
-      return n;
+      return res;
     } catch (e, st) {
       state = AsyncError(e, st);
-      return -1;
+      return null;
     }
   }
 
