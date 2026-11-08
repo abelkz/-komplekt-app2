@@ -12,6 +12,7 @@ import '../../../../core/widgets/sign_in_required.dart';
 import '../../../auth/presentation/auth_providers.dart';
 import '../../../favorites/presentation/favorites_providers.dart';
 import '../../domain/product.dart';
+import '../catalog_providers.dart';
 
 /// Карточка товара в сетке каталога: фото, бренд, название, цена от, число
 /// продавцов и наличие.
@@ -251,12 +252,12 @@ class ProductGridCard extends ConsumerWidget {
 ///
 /// В сетке кадрирование уместно: тут выбирают из многих, и важнее ровный
 /// ритм карточек. Целиком снимок показывается в карточке товара.
-class _CardImage extends StatelessWidget {
+class _CardImage extends ConsumerWidget {
   const _CardImage({required this.product});
   final Product product;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final url = product.primaryImageUrl;
     final bg = product.placeholderColor ?? c.field;
@@ -273,13 +274,54 @@ class _CardImage extends StatelessWidget {
       );
     }
 
-    if (url == null) return placeholder();
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.cover,
-      placeholder: (_, __) => Container(color: bg),
-      errorWidget: (_, __, ___) => placeholder(),
+    if (url != null) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(color: bg),
+        errorWidget: (_, __, ___) => placeholder(),
+      );
+    }
+
+    // Своего снимка нет. Справочных карточек в каталоге теперь больше,
+    // чем карточек с фото (миграция 0043), и экран серых прямоугольников
+    // читается как поломка. Подкладываем картинку категории — она наша
+    // (categories.image_url, миграция 0028) и честная: приглушена, с
+    // иконкой поверх, то есть видно, что это подложка, а не снимок
+    // именно этого товара.
+    final categoryImage = _categoryImage(ref);
+    if (categoryImage == null) return placeholder();
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: bg),
+        Opacity(
+          opacity: 0.4,
+          child: CachedNetworkImage(
+            imageUrl: categoryImage,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => const SizedBox.shrink(),
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+        Center(
+          child: Icon(CategoryIcons.of(product.categorySlug),
+              size: 40, color: Colors.white.withValues(alpha: 0.75)),
+        ),
+      ],
     );
+  }
+
+  /// Картинка категории этого товара. Категории уже загружены для главной
+  /// и фильтров, так что лишнего запроса не будет.
+  String? _categoryImage(WidgetRef ref) {
+    final slug = product.categorySlug;
+    if (slug == null || slug.isEmpty) return null;
+    for (final cat in ref.watch(categoriesProvider).valueOrNull ?? const []) {
+      if (cat.slug == slug) return cat.imageUrl;
+    }
+    return null;
   }
 }
 
