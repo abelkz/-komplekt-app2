@@ -118,4 +118,48 @@ void main() {
       0,
     );
   });
+
+  // ── Карточки справочника: товар есть, цены ещё нет ──
+  //
+  // Их 534 штуки (миграция 0043), и из каталога они пропадали целиком:
+  // фильтр выбрасывал всё, у чего пустой список предложений. Строка
+  // писалась, когда карточек без цены не существовало.
+  group('карточка без единой цены', () {
+    const noPrice = Product(id: 'ref', name: 'Справочная', offers: []);
+    final mixed = [...products, noPrice];
+
+    test('видна, когда фильтры не заданы', () {
+      final res = applyFilters(mixed, const CatalogFilters());
+      expect(res.map((p) => p.id), contains('ref'));
+    });
+
+    test('уходит в конец при сортировке по цене в любую сторону', () {
+      expect(applyFilters(mixed, const CatalogFilters()).last.id, 'ref');
+      expect(
+        applyFilters(mixed, const CatalogFilters(sort: SortBy.priceDesc))
+            .last
+            .id,
+        'ref',
+      );
+    });
+
+    test('скрыта под «в наличии», городом и потолком цены', () {
+      for (final f in const [
+        CatalogFilters(inStock: true),
+        CatalogFilters(city: 'Астана'),
+        CatalogFilters(maxPrice: 10000),
+      ]) {
+        expect(applyFilters(mixed, f).map((p) => p.id), isNot(contains('ref')),
+            reason: 'цены нет — под такой фильтр подойти нечем');
+      }
+    });
+
+    test('товар, у которого предложения отсеялись фильтром, скрыт', () {
+      // У «b» единственное предложение в Алматы: фильтр по Астане
+      // должен убрать товар целиком, а не показать его как карточку
+      // без цены.
+      final res = applyFilters(mixed, const CatalogFilters(city: 'Астана'));
+      expect(res.map((p) => p.id), isNot(contains('b')));
+    });
+  });
 }

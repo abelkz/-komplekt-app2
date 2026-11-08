@@ -1,0 +1,60 @@
+name: Синхронизация цен поставщика
+
+# ─────────────────────────────────────────────────────────────────────────
+# Раз в сутки читает открытый каталог поставщика и переносит цены в его
+# предложения. Разбор — в шапке tools/price_sync.py.
+#
+# ВЫКЛЮЧЕНА, ПОКА НЕ НАСТРОЕНА. Нужны:
+#
+#   Settings → Secrets and variables → Actions → Secrets
+#     SUPABASE_SECRET_KEY — секретный ключ проекта Supabase
+#                           (Settings → API Keys → Secret keys)
+#     SUPABASE_URL        — адрес проекта (уже есть в секретах)
+#
+#   Settings → Secrets and variables → Actions → Variables
+#     PRICE_SYNC_SUPPLIER_ID — id компании-поставщика в таблице suppliers,
+#                              от чьего имени показываются цены
+#     PRICE_SYNC_OWNER_ID    — (необязательно) uuid пользователя-владельца
+#                              предложений
+#
+# Пока PRICE_SYNC_SUPPLIER_ID не задан, запуск завершается сообщением
+# и ничего не меняет. Это предохранитель, а не недоделка: цена в
+# каталоге всегда показывается от имени конкретного продавца, и
+# включать её можно только по договорённости с ним.
+#
+# Секретный ключ обходит все политики базы. Он лежит только в секретах
+# GitHub и попадает в один шаг — в логи не печатается.
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    # 04:20 UTC — 10:20 по Астане: цены за ночь уже обновлены, а до
+    # дневной нагрузки на чужой сайт далеко.
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Пробный прогон: посчитать, но ничего не менять'
+        type: boolean
+        default: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Перенести цены
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PRICE_SYNC_SUPPLIER_ID: ${{ vars.PRICE_SYNC_SUPPLIER_ID }}
+          PRICE_SYNC_OWNER_ID: ${{ vars.PRICE_SYNC_OWNER_ID }}
+          # По кнопке — пробный прогон по умолчанию; по расписанию —
+          # настоящий. Случайно залить цены одним нажатием нельзя.
+          PRICE_SYNC_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: python3 tools/price_sync.py

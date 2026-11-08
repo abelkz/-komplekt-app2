@@ -38,6 +38,11 @@ class CatalogFilters {
   /// строкой из brands(name), своего идентификатора в карточке нет.
   final String? brand;
 
+  /// Фильтры, которые отбирают не карточку, а предложения в ней.
+  /// Карточке без единой цены удовлетворить им нечем.
+  bool get narrowsOffers =>
+      city != 'Все города' || inStock || maxPrice != null;
+
   int get activeCount =>
       (city != 'Все города' ? 1 : 0) +
       (inStock ? 1 : 0) +
@@ -84,6 +89,7 @@ List<Product> applyFilters(List<Product> products, CatalogFilters f) {
     final brand = f.brand;
     if (brand != null && p.brand.toLowerCase() != brand.toLowerCase()) continue;
 
+    final hadOffers = p.offers.isNotEmpty;
     var offers = p.offers;
     if (f.city != 'Все города') {
       offers = offers.where((o) => o.city == f.city).toList();
@@ -93,7 +99,19 @@ List<Product> applyFilters(List<Product> products, CatalogFilters f) {
     // иначе в карточке остались бы строки дороже заданного бюджета.
     final cap = f.maxPrice;
     if (cap != null) offers = offers.where((o) => o.price <= cap).toList();
-    if (offers.isEmpty) continue;
+
+    // Пустой список предложений значит две разные вещи.
+    //
+    // Предложения были и все отсеялись фильтром — товар не подходит,
+    // прячем. Предложений не было вовсе — это карточка справочника
+    // (миграция 0043), и прятать её незачем: по ней видно, что товар
+    // в каталоге знают, и видно спрос. Раньше эта строка выбрасывала
+    // и те и другие, потому что писалась, когда карточек без цены не
+    // существовало, — и весь справочник из каталога пропадал.
+    //
+    // Исключение — фильтры «в наличии», город и потолок цены: им
+    // карточка без цены удовлетворить не может, там её честно нет.
+    if (offers.isEmpty && (hadOffers || f.narrowsOffers)) continue;
     result.add(Product(
       id: p.id,
       name: p.name,
@@ -118,14 +136,26 @@ List<Product> applyFilters(List<Product> products, CatalogFilters f) {
   result.sort((a, b) {
     switch (f.sort) {
       case SortBy.priceAsc:
-        return (a.minPrice ?? 0).compareTo(b.minPrice ?? 0);
+        return _byPrice(a, b, asc: true);
       case SortBy.priceDesc:
-        return (b.minPrice ?? 0).compareTo(a.minPrice ?? 0);
+        return _byPrice(a, b, asc: false);
       case SortBy.rating:
         return b.rating.compareTo(a.rating);
     }
   });
   return result;
+}
+
+/// Сравнение по цене. Карточки без цены уходят в конец при любой
+/// стороне сортировки: раньше их цена считалась нулём, и «сначала
+/// дешёвые» начиналось со справочника, а не с того, что можно купить.
+int _byPrice(Product a, Product b, {required bool asc}) {
+  final x = a.minPrice, y = b.minPrice;
+  if (x == null || y == null) {
+    if (x == null && y == null) return 0;
+    return x == null ? 1 : -1;
+  }
+  return asc ? x.compareTo(y) : y.compareTo(x);
 }
 
 // ── Данные ──
