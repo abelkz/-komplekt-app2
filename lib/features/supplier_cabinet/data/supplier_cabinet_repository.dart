@@ -674,6 +674,10 @@ class SupplierCabinetRepository {
       //    а не только в своих: если этот керамогранит уже завёл другой
       //    поставщик, надо добавить цену к его карточке, а не плодить дубль.
       final existing = await _findProductsBySku(bySku.values.toList());
+      // Строки без артикула — по названию, в пределах выбранной
+      // категории и только при единственном кандидате.
+      final existingByName =
+          await _findProductsByName(byName.values.toList(), categorySlug);
 
       final matched = <Object, PriceRow>{}; // id карточки -> строка прайса
       final fresh = <PriceRow>[]; // карточек ещё нет — заводим
@@ -685,8 +689,14 @@ class SupplierCabinetRepository {
           fresh.add(row);
         }
       });
-      // Строки без артикула склеивать не с чем — каждая даёт свою карточку.
-      fresh.addAll(byName.values);
+      for (final row in byName.values) {
+        final id = existingByName[normName(row.name)];
+        if (id != null) {
+          matched[id] = row;
+        } else {
+          fresh.add(row);
+        }
+      }
 
       // 2) Новые карточки — пачками. Пачка не прошла целиком: разбираем её
       //    по одной, чтобы потерять одну строку, а не весь прайс.
@@ -812,10 +822,66 @@ class SupplierCabinetRepository {
   /// Ищет карточки каталога по артикулам прайса: нормализованный
   /// артикул -> id карточки.
   ///
-  /// Спрашиваем сразу несколько написаний каждого артикула
-  /// ([skuLookupVariants]): PostgREST сравнивает `in` регистрозависимо,
-  /// а нормализованной колонки в базе пока нет.
+  /// Считает база (`match_products_by_sku`, миграция 0040): сравнение
+  /// идёт по нормализованной колонке, поэтому покрывает все написания
+  /// сразу, и заодно учитывает алиасы — артикулы карточек, которые
+  /// администратор слил в эту. Без алиасов повторный импорт того же
+  /// прайса заводил бы удалённый дубль заново.
   Future<Map<String, Object>> _findProductsBySku(List<PriceRow> rows) async {
+    if (rows.isEmpty) return {};
+    try {
+      final res = await supabase.rpc('match_products_by_sku', params: {
+        'p_skus': rows.map((r) => r.sku).whereType<String>().toList(),
+      });
+      final found = <String, Object>{};
+      for (final row in (res as List).cast<Map<String, dynamic>>()) {
+        final key = row['key_norm']?.toString();
+        final id = row['match_id'];
+        if (key != null && id != null) found[key] = id as Object;
+      }
+      return found;
+    } catch (_) {
+      // Миграции 0040 ещё нет — ищем сами, перебирая написания.
+      return _findProductsBySkuFallback(rows);
+    }
+  }
+
+  /// Карточки для строк БЕЗ артикула — по точному названию в пределах
+  /// категории (`match_products_by_name`, миграция 0040).
+  ///
+  /// Это цемент, песок, штукатурка: заводского артикула у них не
+  /// бывает, а карточка всё равно должна быть одна. База отдаёт
+  /// совпадение только если подходящая карточка РОВНО ОДНА — два
+  /// кандидата значит, что название неразличающее, и угадывать нельзя.
+  /// Функции в базе нет — склейки по названию просто не будет, как и
+  /// раньше: каждая такая строка заведёт свою карточку.
+  Future<Map<String, Object>> _findProductsByName(
+    List<PriceRow> rows,
+    String categorySlug,
+  ) async {
+    if (rows.isEmpty) return {};
+    try {
+      final res = await supabase.rpc('match_products_by_name', params: {
+        'p_names': rows.map((r) => r.name).toList(),
+        'p_category': categorySlug,
+      });
+      final found = <String, Object>{};
+      for (final row in (res as List).cast<Map<String, dynamic>>()) {
+        final key = row['key_norm']?.toString();
+        final id = row['match_id'];
+        if (key != null && id != null) found[key] = id as Object;
+      }
+      return found;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Запасной путь, пока миграции 0040 нет: спрашиваем сразу несколько
+  /// написаний каждого артикула ([skuLookupVariants]), потому что
+  /// PostgREST сравнивает `in` регистрозависимо.
+  Future<Map<String, Object>> _findProductsBySkuFallback(
+      List<PriceRow> rows) async {
     final variants = <String>{};
     for (final r in rows) {
       variants.addAll(skuLookupVariants(r.sku));

@@ -26,6 +26,12 @@ final contentReportsProvider = FutureProvider<List<ContentReport>>(
 final adminBrandsProvider =
     FutureProvider<List<Brand>>((ref) => ref.read(adminRepositoryProvider).brands());
 
+/// Карточки-дубли каталога. В счётчик дел не идут: это не заявка,
+/// которая кого-то ждёт, а разбор накопившегося — иначе бейдж в
+/// профиле горел бы постоянно и перестал что-либо значить.
+final adminDuplicatesProvider = FutureProvider<List<DuplicateGroup>>(
+    (ref) => ref.read(adminRepositoryProvider).duplicates());
+
 // ──────────────────────────── Рассылка ────────────────────────────
 
 /// Журнал отправленных объявлений.
