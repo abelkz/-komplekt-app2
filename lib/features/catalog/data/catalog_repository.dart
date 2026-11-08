@@ -28,6 +28,33 @@ class CatalogRepository {
       'stock_qty,lead_time_days,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website,verified,plan,plan_until))';
 
+  /// То же, но только товары, у которых есть хотя бы одно предложение:
+  /// `!inner` превращает вложенную выборку во внутреннее соединение.
+  ///
+  /// Нужно для ленты на главной. Карточка без единой цены в каталоге
+  /// законна — это справочник, по нему видно, что товар знают, и видно
+  /// спрос. Но лента отсортирована по дате добавления, поэтому пачка
+  /// заведённых справочных карточек заняла бы её целиком, и первое, что
+  /// увидел бы покупатель, — экран из «цена не указана».
+  static const productSelectPricedOnly =
+      'id,name,sku,unit,color,image_url,description,rating,category_slug,'
+      'brand_id,pack_qty,warranty_months,attrs,'
+      'brands(name),'
+      'product_images(url,sort),'
+      'offers!inner(id,price,prev_price,in_stock,price_updated_at,'
+      'promoted_until,stock_qty,lead_time_days,supplier_id,'
+      'suppliers(name,city,phone,whatsapp,website,verified,plan,plan_until))';
+
+  /// Карточки без цены — в конец списка.
+  ///
+  /// Не сортировка, а разделение на две части: внутри каждой порядок
+  /// остаётся тот, что пришёл из базы (List.sort в Dart неустойчив и
+  /// перемешал бы их).
+  static List<Product> _pricedFirst(List<Product> list) => [
+        ...list.where((p) => p.minPrice != null),
+        ...list.where((p) => p.minPrice == null),
+      ];
+
   /// Список категорий (по полю sort).
   /// Колонку с иконкой не перечисляем явно: в живой базе она называется
   /// `emoji`, в схеме Flutter-миграций — `icon`. Забираем всё и разбираем
@@ -111,7 +138,11 @@ class CatalogRepository {
       // Общую карточку продвижение не поднимает — она общая для всех
       // поставщиков. Продвижение показывается отдельной спонсорской
       // строкой (см. sponsoredInCategory).
-      return rows.map<Product>((m) => Product.fromMap(m)).toList();
+      //
+      // Справочные карточки (без единой цены) из категории не прячем:
+      // по ним видно, что товар в каталоге знают, и видно спрос. Но
+      // показывать их раньше того, что можно купить, нельзя.
+      return _pricedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось загрузить товары');
     }
@@ -136,7 +167,7 @@ class CatalogRepository {
           .select(productSelect)
           .or(filters.join(','))
           .limit(100);
-      return rows.map<Product>((m) => Product.fromMap(m)).toList();
+      return _pricedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
     } catch (e) {
       throw mapError(e, fallback: 'Поиск не удался');
     }
@@ -188,11 +219,23 @@ class CatalogRepository {
     try {
       final rows = await supabase
           .from('products')
-          .select(productSelect)
+          .select(productSelectPricedOnly)
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
       return rows.map<Product>((m) => Product.fromMap(m)).toList();
     } catch (e) {
+      // `!inner` могла не понять старая версия PostgREST. Лента важнее
+      // фильтрации: лучше показать её с карточками без цены, чем не
+      // показать вовсе.
+      try {
+        final rows = await supabase
+            .from('products')
+            .select(productSelect)
+            .order('created_at', ascending: false)
+            .range(offset, offset + limit - 1);
+        return _pricedFirst(
+            rows.map<Product>((m) => Product.fromMap(m)).toList());
+      } catch (_) {}
       throw mapError(e, fallback: 'Не удалось загрузить ленту');
     }
   }
