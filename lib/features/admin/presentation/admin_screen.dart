@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/pricing.dart';
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/launchers.dart';
@@ -28,7 +29,7 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 7,
+      length: 8,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
@@ -40,9 +41,10 @@ class AdminScreen extends ConsumerWidget {
             Tab(text: 'Тарифы'),
             Tab(text: 'Буст'),
             Tab(text: 'Жалобы'),
-            // Марки последними: это наведение порядка, а не разбор дел —
-            // сюда заходят по необходимости, а не каждый день.
+            // Марки и дубли: это наведение порядка в каталоге, а не разбор
+            // дел — сюда заходят по необходимости, а не каждый день.
             Tab(text: 'Марки'),
+            Tab(text: 'Дубли'),
             // Рассылка в самом конце нарочно: это единственное действие в
             // панели, которое уходит наружу к живым людям и не отменяется.
             // Незачем держать её под пальцем рядом с повседневным разбором.
@@ -56,6 +58,7 @@ class AdminScreen extends ConsumerWidget {
           _BoostTab(),
           _ReportsTab(),
           _BrandsTab(),
+          _DuplicatesTab(),
           _BroadcastTab(),
         ]),
       ),
@@ -1593,6 +1596,282 @@ void _deleteBrand(BuildContext context, WidgetRef ref, Brand brand) {
       ],
     ),
   );
+}
+
+// ──────────────────────────── Дубли каталога ────────────────────────────
+
+/// Карточки, которые база считает одним товаром.
+///
+/// Это главная причина, по которой сравнение цен не работает: два
+/// продавца одного керамогранита заводили две карточки с одной ценой
+/// в каждой, и сравнивать было нечего. Новые дубли по артикулу
+/// не появляются (нормализация, миграция 0040), но накопившиеся
+/// разобрать больше нечем — удалить карточку запросом нельзя, на неё
+/// ссылаются избранное, подборки, отзывы и история цен.
+class _DuplicatesTab extends ConsumerWidget {
+  const _DuplicatesTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final groups = ref.watch(adminDuplicatesProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(adminDuplicatesProvider),
+      child: AsyncValueView<List<DuplicateGroup>>(
+        value: groups,
+        onRetry: () => ref.invalidate(adminDuplicatesProvider),
+        isEmpty: (d) => d.isEmpty,
+        empty: const EmptyState(
+          title: 'Дублей нет',
+          subtitle: 'Карточки с одинаковым артикулом или названием не '
+              'найдены. Можно применять миграцию 0042 — она не даст '
+              'появиться новым.',
+          icon: Icons.done_all,
+        ),
+        data: (list) => ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          itemCount: list.length + 1,
+          itemBuilder: (_, i) => i == 0
+              ? const _DuplicatesHint()
+              : _DuplicateGroupCard(group: list[i - 1]),
+        ),
+      ),
+    );
+  }
+}
+
+class _DuplicatesHint extends StatelessWidget {
+  const _DuplicatesHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Text(
+        'Выберите карточку, которая останется в каталоге. Цены, избранное, '
+        'подборки, отзывы и история цен с остальных переедут на неё, сами '
+        'они удалятся. Если у поставщика цена есть на обеих — останется '
+        'та, что дешевле. Отменить нельзя.',
+        style: TextStyle(fontSize: 12, color: c.gray, height: 1.4),
+      ),
+    );
+  }
+}
+
+class _DuplicateGroupCard extends ConsumerWidget {
+  const _DuplicateGroupCard({required this.group});
+  final DuplicateGroup group;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final suggested = group.suggested;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.copy_all_outlined, size: 16, color: c.gray),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${group.reason} · карточек: ${group.cards.length}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: c.gray,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            for (final card in group.cards)
+              _DuplicateRow(
+                card: card,
+                recommended: card.id == suggested.id,
+                onKeep: () => _mergeGroup(context, ref, group, card),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DuplicateRow extends StatelessWidget {
+  const _DuplicateRow({
+    required this.card,
+    required this.recommended,
+    required this.onKeep,
+  });
+
+  final DuplicateCard card;
+  final bool recommended;
+  final VoidCallback onKeep;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final meta = <String>[
+      if (card.brand != null && card.brand!.isNotEmpty) card.brand!,
+      if (card.sku != null && card.sku!.isNotEmpty) 'арт. ${card.sku}',
+      'предложений: ${card.offers}',
+      if (card.minPrice != null) Formatters.price(card.minPrice!),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (card.isReference) ...[
+                      Icon(Icons.verified, size: 14, color: c.accent),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        card.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  meta.join(' · '),
+                  style: TextStyle(fontSize: 11, color: c.gray),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Подсказка, а не решение: больше предложений — больше людей
+          // уже ссылается на эту карточку, но название у неё может быть
+          // хуже, и это видно только человеку.
+          recommended
+              ? FilledButton(
+                  onPressed: onKeep,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Оставить'),
+                )
+              : OutlinedButton(
+                  onPressed: onKeep,
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: c.ink,
+                    side: BorderSide(color: c.line),
+                  ),
+                  child: const Text('Оставить'),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Слить всю группу в выбранную карточку.
+void _mergeGroup(
+  BuildContext context,
+  WidgetRef ref,
+  DuplicateGroup group,
+  DuplicateCard keep,
+) {
+  final others = group.cards.where((c) => c.id != keep.id).toList();
+  if (others.isEmpty) return;
+
+  showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => AlertDialog(
+      title: const Text('Объединить карточки?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Останется: «${keep.name}»'),
+          const SizedBox(height: 8),
+          Text(
+            others.length == 1
+                ? 'Удалится: «${others.first.name}»'
+                : 'Удалится карточек: ${others.length}',
+            style: TextStyle(color: context.colors.gray),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Цены, избранное, подборки, отзывы и история цен переедут на '
+            'остающуюся карточку. Отменить нельзя.',
+            style: TextStyle(fontSize: 12, color: context.colors.gray),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogCtx),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(dialogCtx);
+            _runMerge(context, ref, keep: keep, others: others);
+          },
+          child: const Text('Объединить'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> _runMerge(
+  BuildContext context,
+  WidgetRef ref, {
+  required DuplicateCard keep,
+  required List<DuplicateCard> others,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final repo = ref.read(adminRepositoryProvider);
+  var done = 0;
+  Object? failure;
+
+  // По одной: слияние необратимо, и если третья карточка не прошла,
+  // первые две должны остаться слитыми — заново их уже не разберёшь.
+  for (final card in others) {
+    try {
+      await repo.mergeProducts(keep: keep.id, drop: card.id);
+      done++;
+    } catch (e) {
+      failure = e;
+      break;
+    }
+  }
+
+  ref.invalidate(adminDuplicatesProvider);
+  // Карточка исчезла из каталога — списки, подборки и избранное надо
+  // перечитать целиком: ссылки на неё были в каждом из них.
+  refreshAppData(ref);
+
+  final error = failure;
+  messenger.showSnackBar(SnackBar(
+    content: Text(error == null
+        ? 'Объединено карточек: $done'
+        : 'Объединено: $done из ${others.length}. ${_msg(error)}'),
+  ));
 }
 
 // ──────────────────────────── Рассылка ────────────────────────────

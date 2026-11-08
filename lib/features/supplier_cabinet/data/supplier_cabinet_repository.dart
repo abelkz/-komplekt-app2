@@ -4,6 +4,7 @@ import '../../../core/config/supabase_client.dart';
 import '../../../core/errors/failure.dart';
 import '../../catalog/domain/product.dart';
 import '../../suppliers_map/domain/supplier.dart';
+import 'sku_match.dart';
 
 /// Ошибка с настоящим текстом от базы.
 ///
@@ -21,6 +22,28 @@ Failure _dbFail(Object e, String what) {
     return Failure('$what: $detail');
   }
   return mapError(e, fallback: what);
+}
+
+/// Отказ из-за конкретной строки прайса, а не из-за файла или настроек
+/// базы.
+///
+/// Разбирать пачку по одной строке стоит только в этом случае. Если база
+/// отвечает «нет такой колонки» или «нет прав», то же самое она ответит
+/// и на каждую строку по отдельности — перебор 2000 строк даст пару тысяч
+/// бесполезных запросов и тот же отказ в конце. Такие ошибки честнее
+/// показать целиком и сразу.
+bool _isRowLevel(Object e) {
+  if (e is Failure) return true; // наши собственные проверки по строке
+  if (e is! PostgrestException) return false;
+  const rowCodes = {
+    '23505', // нарушена уникальность — карточка с таким артикулом уже есть
+    '23503', // нет такой категории или поставщика
+    '23514', // значение не прошло проверку
+    '22P02', // не число там, где ждали число
+    '22003', // число не влезает в колонку
+    '22001', // строка длиннее колонки
+  };
+  return rowCodes.contains(e.code);
 }
 
 /// Импортируемая строка прайса (после сопоставления колонок).
@@ -44,6 +67,36 @@ class PriceRow {
   /// в файле не было; тогда в базе остаётся «не указано», а не ноль.
   final double? stockQty;
   final int? leadTimeDays;
+}
+
+/// Итог импорта прайса.
+///
+/// Поставщику важно видеть не только «загружено N», а сколько его строк
+/// легло на УЖЕ СУЩЕСТВУЮЩИЕ карточки каталога: в этом весь смысл общего
+/// каталога, и это же лучший довод в разговоре с ним.
+class ImportResult {
+  const ImportResult({
+    required this.created,
+    required this.matched,
+    required this.failed,
+    this.firstError,
+  });
+
+  static const empty = ImportResult(created: 0, matched: 0, failed: []);
+
+  /// Новых карточек каталога — товара в каталоге не было
+  final int created;
+
+  /// Цен, добавленных к карточкам, которые в каталоге уже были
+  final int matched;
+
+  /// Названия строк, которые загрузить не удалось
+  final List<String> failed;
+
+  /// Причина первой неудачной строки — без неё «не вышло 40» бесполезно
+  final String? firstError;
+
+  int get total => created + matched;
 }
 
 /// Что доступно поставщику для подъёма в топ прямо сейчас.
@@ -575,55 +628,334 @@ class SupplierCabinetRepository {
     }
   }
 
-  /// Массовый импорт прайса: товары + цены одной пачкой.
-  /// Возвращает количество загруженных позиций.
-  Future<int> importPrice({
+  /// Массовый импорт прайса: товары + цены.
+  ///
+  /// Строки прайса склеиваются с карточками ОБЩЕГО каталога по
+  /// нормализованному заводскому артикулу (см. [normSku]), а не по точному
+  /// совпадению строки. Раньше «dd640200r» не находил карточку
+  /// «DD640200R»: импорт пытался создать дубль, упирался в уникальный
+  /// индекс `products_brand_sku_uniq` — и падал весь прайс целиком, а не
+  /// одна строка. Теперь проблемная строка попадает в
+  /// [ImportResult.failed], остальные загружаются.
+  Future<ImportResult> importPrice({
     required List<PriceRow> rows,
     required String categorySlug,
     required String supplierId,
   }) async {
     final uid = await _requireSession();
-    if (rows.isEmpty) return 0;
+    if (rows.isEmpty) return ImportResult.empty;
+
+    // 0) Дубли внутри самого файла. Один товар в прайсе нередко встречается
+    //    дважды; побеждает последняя строка — обычно это и есть свежая цена.
+    //    Без этого две строки с одним артикулом гарантированно ломали
+    //    вставку об уникальный индекс.
+    final bySku = <String, PriceRow>{}; // нормализованный артикул -> строка
+    final byName = <String, PriceRow>{}; // название + единица -> строка
+    for (final r in rows) {
+      final key = normSku(r.sku);
+      if (key != null) {
+        bySku[key] = r;
+      } else {
+        byName['${normName(r.name)}|${r.unit}'] = r;
+      }
+    }
+
+    final failed = <String>[];
+    String? firstError;
+    // Строку не загрузили — запоминаем причину первой: «не вышло 40 строк»
+    // без причины так же бесполезно, как прежнее падение всего файла.
+    void fail(PriceRow r, Object e) {
+      failed.add(r.name);
+      firstError ??= _dbFail(e, 'Строка «${r.name}»').message;
+    }
+
     try {
-      // 0) Что из прайса уже есть в ОБЩЕМ каталоге.
-      //
-      //    Ищем по артикулу производителя во всех карточках, а не только
-      //    в своих: если этот керамогранит уже завёл другой поставщик,
-      //    мы должны добавить цену к его карточке, а не плодить дубль.
-      final skus = rows
-          .map((r) => r.sku?.trim())
-          .whereType<String>()
-          .where((s) => s.isNotEmpty)
-          .toSet()
-          .toList();
+      // 1) Что из прайса уже есть в общем каталоге. Ищем во ВСЕХ карточках,
+      //    а не только в своих: если этот керамогранит уже завёл другой
+      //    поставщик, надо добавить цену к его карточке, а не плодить дубль.
+      final existing = await _findProductsBySku(bySku.values.toList());
+      // Строки без артикула — по названию, в пределах выбранной
+      // категории и только при единственном кандидате.
+      final existingByName =
+          await _findProductsByName(byName.values.toList(), categorySlug);
 
-      final existing = <String, dynamic>{}; // артикул -> id карточки
-      if (skus.isNotEmpty) {
-        final found = await supabase
-            .from('products')
-            .select('id,sku')
-            .inFilter('sku', skus);
-        for (final row in found) {
-          final sku = row['sku']?.toString();
-          if (sku != null && sku.isNotEmpty) existing[sku] = row['id'];
-        }
-      }
-
-      final newRows = <PriceRow>[];
-      final updates = <MapEntry<dynamic, PriceRow>>[]; // id товара -> строка
-      for (final r in rows) {
-        final sku = r.sku?.trim();
-        final id = (sku != null && sku.isNotEmpty) ? existing[sku] : null;
+      final matched = <Object, PriceRow>{}; // id карточки -> строка прайса
+      final fresh = <PriceRow>[]; // карточек ещё нет — заводим
+      bySku.forEach((key, row) {
+        final id = existing[key];
         if (id != null) {
-          updates.add(MapEntry(id, r));
+          matched[id] = row;
         } else {
-          newRows.add(r);
+          fresh.add(row);
+        }
+      });
+      for (final row in byName.values) {
+        final id = existingByName[normName(row.name)];
+        if (id != null) {
+          matched[id] = row;
+        } else {
+          fresh.add(row);
         }
       }
 
-      // 1) новые товары пачкой — фото сразу в products.image_url, как в вебе
-      if (newRows.isNotEmpty) {
-        final productsPayload = newRows
+      // 2) Новые карточки — пачками. Пачка не прошла целиком: разбираем её
+      //    по одной, чтобы потерять одну строку, а не весь прайс.
+      var created = 0;
+      for (final chunk in chunked(fresh, 100)) {
+        try {
+          created += await _insertNewProducts(
+            rows: chunk,
+            categorySlug: categorySlug,
+            supplierId: supplierId,
+            uid: uid,
+          );
+        } catch (chunkError) {
+          if (!_isRowLevel(chunkError)) rethrow;
+          for (final r in chunk) {
+            try {
+              created += await _insertNewProducts(
+                rows: [r],
+                categorySlug: categorySlug,
+                supplierId: supplierId,
+                uid: uid,
+              );
+            } catch (e) {
+              if (!_isRowLevel(e)) rethrow;
+              // Карточка с таким артикулом всё-таки есть — например, его
+              // написали в регистре, которого не было среди наших
+              // вариантов поиска. Это не повод терять строку: добавим
+              // цену к найденной карточке.
+              final id = await _findProductBySku(r.sku);
+              if (id != null) {
+                matched[id] = r;
+              } else {
+                fail(r, e);
+              }
+            }
+          }
+        }
+      }
+
+      // 3) Карточка уже в каталоге — трогаем только своё предложение.
+      //    Чужую карточку не переписываем: название и фото там общие,
+      //    правит их тот, кто её завёл (или администратор). Прежнюю цену
+      //    запомнит и уведомит тех, у кого товар в избранном, сама база
+      //    триггерами offers_track_price / offers_notify_price_drop.
+      var priced = 0;
+      if (matched.isNotEmpty) {
+        final mine = await _myOfferIds(matched.keys.toList(), supplierId);
+        final toInsert = <({String name, Map<String, dynamic> payload})>[];
+
+        for (final e in matched.entries) {
+          final offerId = mine[e.key];
+          final sku = e.value.sku?.trim();
+          if (offerId == null) {
+            toInsert.add((
+              name: e.value.name,
+              payload: {
+                'product_id': e.key,
+                'supplier_id': supplierId,
+                'owner_id': uid,
+                'price': e.value.price,
+                'in_stock': true,
+                'stock_qty': e.value.stockQty,
+                'lead_time_days': e.value.leadTimeDays,
+                if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
+              },
+            ));
+          } else {
+            try {
+              await supabase.from('offers').update({
+                'price': e.value.price,
+                'in_stock': true,
+                // Колонки не было в файле — значит в прайсе про это ничего
+                // не сказано, и уже сохранённые остаток и срок не затираем.
+                if (e.value.stockQty != null) 'stock_qty': e.value.stockQty,
+                if (e.value.leadTimeDays != null)
+                  'lead_time_days': e.value.leadTimeDays,
+                if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
+              }).eq('id', offerId);
+              priced++;
+            } catch (err) {
+              if (!_isRowLevel(err)) rethrow;
+              fail(e.value, err);
+            }
+          }
+        }
+
+        for (final chunk in chunked(toInsert, 100)) {
+          try {
+            await supabase
+                .from('offers')
+                .insert(chunk.map((e) => e.payload).toList());
+            priced += chunk.length;
+          } catch (chunkError) {
+            if (!_isRowLevel(chunkError)) rethrow;
+            for (final one in chunk) {
+              try {
+                await supabase.from('offers').insert(one.payload);
+                priced++;
+              } catch (err) {
+                if (!_isRowLevel(err)) rethrow;
+                failed.add(one.name);
+                firstError ??= _dbFail(err, 'Строка «${one.name}»').message;
+              }
+            }
+          }
+        }
+      }
+
+      return ImportResult(
+        created: created,
+        matched: priced,
+        failed: failed,
+        firstError: firstError,
+      );
+    } catch (e) {
+      // Сюда доходят только общие отказы — нет связи, нет прав, нет
+      // колонки. Построчные разобраны выше.
+      if (e is Failure) rethrow; // у нашей ошибки текст уже понятный
+      throw _dbFail(e, 'Не удалось загрузить прайс');
+    }
+  }
+
+  /// Ищет карточки каталога по артикулам прайса: нормализованный
+  /// артикул -> id карточки.
+  ///
+  /// Считает база (`match_products_by_sku`, миграция 0040): сравнение
+  /// идёт по нормализованной колонке, поэтому покрывает все написания
+  /// сразу, и заодно учитывает алиасы — артикулы карточек, которые
+  /// администратор слил в эту. Без алиасов повторный импорт того же
+  /// прайса заводил бы удалённый дубль заново.
+  Future<Map<String, Object>> _findProductsBySku(List<PriceRow> rows) async {
+    if (rows.isEmpty) return {};
+    try {
+      final res = await supabase.rpc('match_products_by_sku', params: {
+        'p_skus': rows.map((r) => r.sku).whereType<String>().toList(),
+      });
+      final found = <String, Object>{};
+      for (final row in (res as List).cast<Map<String, dynamic>>()) {
+        final key = row['key_norm']?.toString();
+        final id = row['match_id'];
+        if (key != null && id != null) found[key] = id as Object;
+      }
+      return found;
+    } catch (_) {
+      // Миграции 0040 ещё нет — ищем сами, перебирая написания.
+      return _findProductsBySkuFallback(rows);
+    }
+  }
+
+  /// Карточки для строк БЕЗ артикула — по точному названию в пределах
+  /// категории (`match_products_by_name`, миграция 0040).
+  ///
+  /// Это цемент, песок, штукатурка: заводского артикула у них не
+  /// бывает, а карточка всё равно должна быть одна. База отдаёт
+  /// совпадение только если подходящая карточка РОВНО ОДНА — два
+  /// кандидата значит, что название неразличающее, и угадывать нельзя.
+  /// Функции в базе нет — склейки по названию просто не будет, как и
+  /// раньше: каждая такая строка заведёт свою карточку.
+  Future<Map<String, Object>> _findProductsByName(
+    List<PriceRow> rows,
+    String categorySlug,
+  ) async {
+    if (rows.isEmpty) return {};
+    try {
+      final res = await supabase.rpc('match_products_by_name', params: {
+        'p_names': rows.map((r) => r.name).toList(),
+        'p_category': categorySlug,
+      });
+      final found = <String, Object>{};
+      for (final row in (res as List).cast<Map<String, dynamic>>()) {
+        final key = row['key_norm']?.toString();
+        final id = row['match_id'];
+        if (key != null && id != null) found[key] = id as Object;
+      }
+      return found;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Запасной путь, пока миграции 0040 нет: спрашиваем сразу несколько
+  /// написаний каждого артикула ([skuLookupVariants]), потому что
+  /// PostgREST сравнивает `in` регистрозависимо.
+  Future<Map<String, Object>> _findProductsBySkuFallback(
+      List<PriceRow> rows) async {
+    final variants = <String>{};
+    for (final r in rows) {
+      variants.addAll(skuLookupVariants(r.sku));
+    }
+    final found = <String, Object>{};
+    if (variants.isEmpty) return found;
+    for (final chunk in chunked(variants.toList(), 150)) {
+      final res =
+          await supabase.from('products').select('id,sku').inFilter('sku', chunk);
+      for (final row in res) {
+        final key = normSku(row['sku']?.toString());
+        final id = row['id'];
+        // Если дубли карточек уже есть, берём первую — склеивать их
+        // самостоятельно импорт не вправе, это работа администратора.
+        if (key != null && id != null) found.putIfAbsent(key, () => id as Object);
+      }
+    }
+    return found;
+  }
+
+  /// Одна карточка по артикулу — запасной путь, когда вставка упёрлась
+  /// в уникальный индекс.
+  Future<Object?> _findProductBySku(String? sku) async {
+    final key = normSku(sku);
+    if (key == null) return null;
+    try {
+      final res = await supabase
+          .from('products')
+          .select('id,sku')
+          .inFilter('sku', skuLookupVariants(sku));
+      for (final row in res) {
+        if (normSku(row['sku']?.toString()) == key) return row['id'] as Object?;
+      }
+    } catch (_) {
+      // Не нашли — строка уйдёт в «не загрузилось» с причиной от вставки.
+    }
+    return null;
+  }
+
+  /// Мои предложения на эти карточки: id карточки -> id предложения.
+  /// Один запрос вместо запроса на каждую строку прайса.
+  Future<Map<Object, Object>> _myOfferIds(
+    List<Object> productIds,
+    String supplierId,
+  ) async {
+    final map = <Object, Object>{};
+    for (final chunk in chunked(productIds, 150)) {
+      final res = await supabase
+          .from('offers')
+          .select('id,product_id')
+          .eq('supplier_id', supplierId)
+          .inFilter('product_id', chunk);
+      for (final row in res) {
+        final pid = row['product_id'];
+        final oid = row['id'];
+        if (pid != null && oid != null) map[pid as Object] = oid as Object;
+      }
+    }
+    return map;
+  }
+
+  /// Заводит новые карточки и сразу свои цены к ним.
+  /// Возвращает число загруженных позиций.
+  Future<int> _insertNewProducts({
+    required List<PriceRow> rows,
+    required String categorySlug,
+    required String supplierId,
+    required String uid,
+  }) async {
+    if (rows.isEmpty) return 0;
+    // Фото сразу в products.image_url — так его читает веб-версия.
+    final inserted = await supabase
+        .from('products')
+        .insert(rows
             .map((r) => {
                   'name': r.name,
                   'sku': r.sku,
@@ -634,71 +966,56 @@ class SupplierCabinetRepository {
                       : r.imageUrl,
                   'owner_id': uid,
                 })
-            .toList();
-        final inserted = await supabase
-            .from('products')
-            .insert(productsPayload)
-            .select('id');
+            .toList())
+        .select('id,sku');
 
-        // 2) к каждому — цена (порядок вставки сохраняется)
-        final offersPayload = <Map<String, dynamic>>[];
-        for (var i = 0; i < inserted.length; i++) {
-          offersPayload.add({
-            'product_id': inserted[i]['id'],
-            'supplier_id': supplierId,
-            'owner_id': uid,
-            'price': newRows[i].price,
-            'in_stock': true,
-            'stock_qty': newRows[i].stockQty,
-            'lead_time_days': newRows[i].leadTimeDays,
-          });
-        }
-        await supabase.from('offers').insert(offersPayload);
-      }
-
-      // 3) карточка уже в каталоге — трогаем только своё предложение.
-      //    Чужую карточку не переписываем: название и фото там общие,
-      //    и правит их тот, кто её завёл (или администратор).
-      //    Триггер в базе сам запомнит прежнюю цену и уведомит тех,
-      //    у кого товар в избранном.
-      for (final e in updates) {
-        final offer = await supabase
-            .from('offers')
-            .select('id')
-            .eq('product_id', e.key)
-            .eq('supplier_id', supplierId)
-            .maybeSingle();
-
-        final sku = e.value.sku?.trim();
-        if (offer == null) {
-          await supabase.from('offers').insert({
-            'product_id': e.key,
-            'supplier_id': supplierId,
-            'owner_id': uid,
-            'price': e.value.price,
-            'in_stock': true,
-            'stock_qty': e.value.stockQty,
-            'lead_time_days': e.value.leadTimeDays,
-            if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
-          });
-        } else {
-          await supabase.from('offers').update({
-            'price': e.value.price,
-            'in_stock': true,
-            // Колонки не было в файле — значит в прайсе про это ничего не
-            // сказано, и уже сохранённые остаток и срок не затираем.
-            if (e.value.stockQty != null) 'stock_qty': e.value.stockQty,
-            if (e.value.leadTimeDays != null)
-              'lead_time_days': e.value.leadTimeDays,
-            if (sku != null && sku.isNotEmpty) 'supplier_sku': sku,
-          }).eq('id', offer['id']);
-        }
-      }
-
-      return newRows.length + updates.length;
-    } catch (e) {
-      throw _dbFail(e, 'Не удалось загрузить прайс');
+    if (inserted.length != rows.length) {
+      throw Failure('база завела ${inserted.length} карточек '
+          'из ${rows.length} — цены не расставить');
     }
+
+    // Строки с артикулом сопоставляем по нему, остальные — по порядку
+    // вставки (он сохраняется, длины уже сверены).
+    final byNorm = <String, Object>{};
+    for (final row in inserted) {
+      final key = normSku(row['sku']?.toString());
+      final id = row['id'];
+      if (key != null && id != null) byNorm[key] = id as Object;
+    }
+
+    final offers = <Map<String, dynamic>>[];
+    for (var i = 0; i < rows.length; i++) {
+      final key = normSku(rows[i].sku);
+      final id = key != null ? byNorm[key] : inserted[i]['id'];
+      if (id == null) throw const Failure('не удалось связать цену с товаром');
+      offers.add({
+        'product_id': id,
+        'supplier_id': supplierId,
+        'owner_id': uid,
+        'price': rows[i].price,
+        'in_stock': true,
+        'stock_qty': rows[i].stockQty,
+        'lead_time_days': rows[i].leadTimeDays,
+      });
+    }
+
+    try {
+      await supabase.from('offers').insert(offers);
+    } catch (_) {
+      // Карточка без цены в каталоге бесполезна и мешает повторному
+      // импорту (в следующий раз она найдётся как существующая, и
+      // поставщик не поймёт, почему цены нет). Транзакций из клиента нет,
+      // поэтому откатываем вставку руками.
+      try {
+        await supabase.from('products').delete().inFilter(
+            'id', inserted.map((r) => r['id'] as Object).toList());
+      } catch (_) {
+        // Откат не прошёл — пусть лучше останется карточка без цены,
+        // чем импорт свалится на попытке убрать её.
+      }
+      rethrow;
+    }
+    return rows.length;
   }
 
   /// Статистика просмотров/обращений по моим товарам.

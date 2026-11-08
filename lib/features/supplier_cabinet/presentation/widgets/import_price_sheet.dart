@@ -222,20 +222,42 @@ class _ImportPriceSheetState extends ConsumerState<_ImportPriceSheet> {
             _lead != null ? _parsePrice(r[_lead!])?.round() : null,
       ));
     }
-    final n = await ref.read(cabinetControllerProvider.notifier).importPrice(
+    if (priceRows.isEmpty) {
+      setState(() => _error = 'В файле не нашлось ни одной строки с '
+          'названием и ценой — проверьте, те ли колонки выбраны');
+      return;
+    }
+    final res = await ref.read(cabinetControllerProvider.notifier).importPrice(
           rows: priceRows,
           categorySlug: _category!,
           supplierId: widget.supplierId,
         );
     if (!mounted) return;
-    if (n >= 0) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Загружено товаров: $n')));
-    } else {
+    if (res == null) {
       final e = ref.read(cabinetControllerProvider).error;
       setState(() => _error = e.toString().replaceFirst('Failure: ', ''));
+      return;
     }
+    // Не загрузилось ничего — лист не закрываем: человеку надо показать
+    // причину, а не бодрое «загружено 0».
+    if (res.total == 0) {
+      setState(() => _error =
+          res.firstError ?? 'Ни одна строка прайса не загрузилась');
+      return;
+    }
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(_importMessage(res))));
+  }
+
+  /// «Загружено: 1900 · узнано 1840 · новых 60» — поставщику важно видеть,
+  /// что его прайс лёг на общий каталог, а не создал ещё тысячу карточек.
+  String _importMessage(ImportResult r) {
+    final parts = <String>['Загружено: ${r.total}'];
+    if (r.matched > 0) parts.add('узнано ${r.matched}');
+    if (r.created > 0) parts.add('новых ${r.created}');
+    if (r.failed.isNotEmpty) parts.add('не вышло ${r.failed.length}');
+    return parts.join(' · ');
   }
 
   @override

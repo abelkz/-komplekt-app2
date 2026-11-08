@@ -56,6 +56,84 @@ class Brand {
       );
 }
 
+/// Карточка-дубль каталога (RPC `admin_duplicate_products`, миграция 0041).
+class DuplicateCard {
+  const DuplicateCard({
+    required this.groupKey,
+    required this.reason,
+    required this.id,
+    required this.name,
+    required this.offers,
+    this.sku,
+    this.brand,
+    this.category,
+    this.imageUrl,
+    this.source = 'supplier',
+    this.minPrice,
+  });
+
+  /// Ключ группы — по нему карточки собираются в одну пару/тройку
+  final String groupKey;
+
+  /// Почему попали в одну группу: «Один артикул» / «Одно название»
+  final String reason;
+
+  final int id;
+  final String name;
+
+  /// Сколько поставщиков уже выставили цену на эту карточку
+  final int offers;
+
+  final String? sku;
+  final String? brand;
+  final String? category;
+  final String? imageUrl;
+
+  /// supplier — завёл поставщик, admin — карточка справочника
+  final String source;
+
+  final double? minPrice;
+
+  /// Карточку справочника при склейке оставляют: её название и фото
+  /// проверены, а у поставщика в названии бывает внутренний код.
+  bool get isReference => source == 'admin';
+
+  factory DuplicateCard.fromMap(Map<String, dynamic> m) => DuplicateCard(
+        groupKey: m['dup_key'] as String? ?? '',
+        reason: m['dup_reason'] as String? ?? '',
+        id: (m['dup_id'] as num).toInt(),
+        name: m['dup_name'] as String? ?? '',
+        offers: (m['dup_offers'] as num?)?.toInt() ?? 0,
+        sku: m['dup_sku'] as String?,
+        brand: m['dup_brand'] as String?,
+        category: m['dup_category'] as String?,
+        imageUrl: m['dup_image'] as String?,
+        source: m['dup_source'] as String? ?? 'supplier',
+        minPrice: (m['dup_min_price'] as num?)?.toDouble(),
+      );
+}
+
+/// Группа карточек, которые база считает одним товаром.
+class DuplicateGroup {
+  const DuplicateGroup({required this.key, required this.cards});
+
+  final String key;
+  final List<DuplicateCard> cards;
+
+  String get reason => cards.isEmpty ? '' : cards.first.reason;
+
+  /// Что предлагаем оставить: карточку справочника, иначе ту, где
+  /// больше всего предложений — на неё ссылается больше всего людей.
+  DuplicateCard get suggested {
+    final sorted = [...cards]..sort((a, b) {
+      if (a.isReference != b.isReference) return a.isReference ? -1 : 1;
+      final byOffers = b.offers.compareTo(a.offers);
+      return byOffers != 0 ? byOffers : a.id.compareTo(b.id);
+    });
+    return sorted.first;
+  }
+}
+
 /// Жалоба на отзыв (таблица content_reports, миграция 0025).
 class ContentReport {
   const ContentReport({
@@ -669,6 +747,58 @@ class AdminRepository {
       return (res as num?)?.toInt() ?? 0;
     } catch (e) {
       throw mapError(e, fallback: 'Не удалось объединить марки');
+    }
+  }
+
+  // ──────────────────────────── Дубли каталога ────────────────────────────
+
+  /// Карточки, которые база считает одним товаром: один артикул в
+  /// пределах марки или одно название в пределах категории.
+  ///
+  /// Это та самая причина, по которой сравнение цен не работает: два
+  /// продавца одного керамогранита дают две карточки с одной ценой
+  /// в каждой, и сравнивать нечего.
+  Future<List<DuplicateGroup>> duplicates() async {
+    try {
+      final rows = await supabase.rpc('admin_duplicate_products');
+      final cards = [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          DuplicateCard.fromMap(r),
+      ];
+      // База отдаёт плоский список, уже упорядоченный по группам —
+      // собираем группы, сохраняя этот порядок.
+      final groups = <String, List<DuplicateCard>>{};
+      for (final c in cards) {
+        groups.putIfAbsent(c.groupKey, () => []).add(c);
+      }
+      return [
+        for (final e in groups.entries)
+          if (e.value.length > 1)
+            DuplicateGroup(key: e.key, cards: e.value),
+      ];
+    } catch (e) {
+      if (e.toString().contains('admin_duplicate_products')) {
+        throw const Failure('Функция ещё не создана — примените миграцию 0041');
+      }
+      throw mapError(e, fallback: 'Не удалось загрузить дубли');
+    }
+  }
+
+  /// Слить карточку [drop] в карточку [keep]: цены, избранное, подборки,
+  /// отзывы и история переезжают, дубль удаляется.
+  ///
+  /// Необратимо, поэтому экран обязан спросить подтверждение. Старый
+  /// артикул база запоминает алиасом — следующий импорт того же прайса
+  /// не заведёт дубль заново.
+  Future<void> mergeProducts({required int keep, required int drop}) async {
+    try {
+      await supabase
+          .rpc('merge_products', params: {'p_keep': keep, 'p_drop': drop});
+    } catch (e) {
+      if (e.toString().contains('merge_products')) {
+        throw const Failure('Функция ещё не создана — примените миграцию 0041');
+      }
+      throw mapError(e, fallback: 'Не удалось объединить карточки');
     }
   }
 
