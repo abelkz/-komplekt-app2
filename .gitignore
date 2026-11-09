@@ -19,3 +19,7 @@ build/
 # Платформенные сборки
 android/.gradle/
 ios/Pods/
+
+# Скомпилированный Python от скриптов в tools/
+__pycache__/
+*.pyc

@@ -45,7 +45,13 @@ def norm_name(s):
 
 
 def parse_megastroy(page):
-    """Название лежит в alt картинки, цена — в data-value рядом."""
+    """Режем страницу по картинке товара: в куске оказываются название
+    (в alt), цена и ссылка на страницу товара.
+
+    Резать по ссылке-миниатюре нельзя, хотя так было бы прямее: часть
+    карточек свёрстана иначе, и на странице их 18 вместо 20 — пропажа
+    молчаливая, разбор просто вернёт меньше товаров.
+    """
     rows = {}
     for part in re.split(r'(?=<img[^>]+data-src="/upload/)', page):
         name = re.search(r'alt="([^"]{6,200})"', part)
@@ -53,9 +59,14 @@ def parse_megastroy(page):
         if not name or not price:
             continue
         value = float(price.group(1))
-        if value > 0:
-            rows.setdefault(norm_name(html.unescape(name.group(1))),
-                            {'price': value, 'in_stock': True})
+        if value <= 0:
+            continue
+        link = re.search(r'href="(/catalog/[^"]+/\d+/)"', part)
+        rows.setdefault(norm_name(html.unescape(name.group(1))), {
+            'price': value,
+            'in_stock': True,
+            'url': 'https://megastroy.kz' + link.group(1) if link else None,
+        })
     return rows
 
 
@@ -78,9 +89,12 @@ def parse_mirceramiki(page):
         digits = re.sub(r'[^\d]', '', price.group(1))
         if not digits:
             continue
+        link = re.search(r'href="(https://mirceramiki\.kz/product/[^"]+)"',
+                         block)
         rows.setdefault(norm_name(html.unescape(name.group(1))), {
             'price': float(digits),
             'in_stock': 'item-availability true' in block,
+            'url': link.group(1) if link else None,
         })
     return rows
 
@@ -197,7 +211,8 @@ def sync(shop, supplier, by_name):
               f'возможно, изменилась разметка каталога')
         return
 
-    mine, code = rest('GET', f'/rest/v1/offers?select=id,product_id,price'
+    mine, code = rest('GET', f'/rest/v1/offers'
+                             f'?select=id,product_id,price,product_url'
                              f'&supplier_id=eq.{supplier}&limit=5000')
     if code != 200 or not isinstance(mine, list):
         print(f'::error::{shop["title"]}: предложения не прочитались, HTTP {code}')
@@ -216,12 +231,17 @@ def sync(shop, supplier, by_name):
             # этот товар» принимается при заливке каталога, а не здесь.
             unmatched += 1
             continue
-        if abs(float(offer['price']) - row['price']) < 0.005:
+        # Ссылка на товар меняется редко, но проставить её надо и тем
+        # предложениям, что заведены до миграции 0045.
+        url_changed = row.get('url') and offer.get('product_url') != row['url']
+        if abs(float(offer['price']) - row['price']) < 0.005 and not url_changed:
             same += 1
             continue
         if not DRY:
-            _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}",
-                        {'price': row['price'], 'in_stock': row['in_stock']})
+            patch = {'price': row['price'], 'in_stock': row['in_stock']}
+            if row.get('url'):
+                patch['product_url'] = row['url']
+            _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}", patch)
             if c not in (200, 204):
                 print(f'    цену не обновить, предложение {offer["id"]}: {c}')
                 failed += 1

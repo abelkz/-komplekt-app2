@@ -25,6 +25,7 @@ class CatalogRepository {
       'brands(name),'
       'product_images(url,sort),'
       'offers(id,price,prev_price,in_stock,price_updated_at,promoted_until,'
+      'product_url,'
       'stock_qty,lead_time_days,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website,verified,plan,plan_until))';
 
@@ -41,7 +42,7 @@ class CatalogRepository {
       'brand_id,pack_qty,warranty_months,attrs,'
       'brands(name),'
       'product_images(url,sort),'
-      'offers!inner(id,price,prev_price,in_stock,price_updated_at,'
+      'offers!inner(id,price,prev_price,in_stock,price_updated_at,product_url,'
       'promoted_until,stock_qty,lead_time_days,supplier_id,'
       'suppliers(name,city,phone,whatsapp,website,verified,plan,plan_until))';
 
