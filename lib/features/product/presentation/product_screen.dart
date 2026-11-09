@@ -830,16 +830,21 @@ class _PriceRow extends ConsumerWidget {
                     ),
                   ),
                 ],
-                // Сайт показываем только если звонить и писать некуда:
+                // Ссылку показываем только если звонить и писать некуда:
                 // в строке помещаются две кнопки, третья ломает вёрстку.
+                // Ведём на страницу самого товара, если она известна
+                // (миграция 0045): с главной магазина покупатель ищет
+                // товар заново ровно тогда, когда уже выбрал.
                 if (offer.phone == null &&
                     offer.whatsapp == null &&
-                    offer.website != null)
+                    (offer.productUrl ?? offer.website) != null)
                   _RowAction(
                     icon: Icons.link_rounded,
-                    tooltip: 'Сайт поставщика',
-                    onTap: () =>
-                        contact(() => Launchers.website(offer.website!)),
+                    tooltip: offer.productUrl != null
+                        ? 'Товар у поставщика'
+                        : 'Сайт поставщика',
+                    onTap: () => contact(() => Launchers.website(
+                        (offer.productUrl ?? offer.website)!)),
                   ),
               ],
             ),
@@ -1043,12 +1048,16 @@ class _ContactButtons extends ConsumerWidget {
           onTap: () => contact(() => Launchers.whatsapp(offer.whatsapp!,
               text: 'Здравствуйте! Интересует «${product.name}»')),
         ),
-      if (offer.website != null)
+      // Страница товара у продавца, если известна; иначе сайт магазина.
+      if ((offer.productUrl ?? offer.website) != null)
         _BigContact(
-          icon: Icons.language_rounded,
-          label: 'Сайт',
+          icon: offer.productUrl != null
+              ? Icons.open_in_new_rounded
+              : Icons.language_rounded,
+          label: offer.productUrl != null ? 'Открыть товар' : 'Сайт',
           color: c.orange,
-          onTap: () => contact(() => Launchers.website(offer.website!)),
+          onTap: () => contact(
+              () => Launchers.website((offer.productUrl ?? offer.website)!)),
         ),
     ];
     if (buttons.isEmpty) return const SizedBox.shrink();

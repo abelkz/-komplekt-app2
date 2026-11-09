@@ -45,7 +45,13 @@ def norm_name(s):
 
 
 def parse_megastroy(page):
-    """Название лежит в alt картинки, цена — в data-value рядом."""
+    """Режем страницу по картинке товара: в куске оказываются название
+    (в alt), цена и ссылка на страницу товара.
+
+    Резать по ссылке-миниатюре нельзя, хотя так было бы прямее: часть
+    карточек свёрстана иначе, и на странице их 18 вместо 20 — пропажа
+    молчаливая, разбор просто вернёт меньше товаров.
+    """
     rows = {}
     for part in re.split(r'(?=<img[^>]+data-src="/upload/)', page):
         name = re.search(r'alt="([^"]{6,200})"', part)
@@ -53,9 +59,14 @@ def parse_megastroy(page):
         if not name or not price:
             continue
         value = float(price.group(1))
-        if value > 0:
-            rows.setdefault(norm_name(html.unescape(name.group(1))),
-                            {'price': value, 'in_stock': True})
+        if value <= 0:
+            continue
+        link = re.search(r'href="(/catalog/[^"]+/\d+/)"', part)
+        rows.setdefault(norm_name(html.unescape(name.group(1))), {
+            'price': value,
+            'in_stock': True,
+            'url': 'https://megastroy.kz' + link.group(1) if link else None,
+        })
     return rows
 
 
@@ -78,9 +89,12 @@ def parse_mirceramiki(page):
         digits = re.sub(r'[^\d]', '', price.group(1))
         if not digits:
             continue
+        link = re.search(r'href="(https://mirceramiki\.kz/product/[^"]+)"',
+                         block)
         rows.setdefault(norm_name(html.unescape(name.group(1))), {
             'price': float(digits),
             'in_stock': 'item-availability true' in block,
+            'url': link.group(1) if link else None,
         })
     return rows
 
@@ -163,6 +177,25 @@ def rest(method, path, body=None):
         return raw, int(code or 0)
 
 
+def fetch_all(path):
+    """Читает таблицу постранично.
+
+    PostgREST отдаёт максимум 1000 строк, и `limit=5000` этого НЕ
+    отменяет — лишнее молча отрезается. На этом уже обожглись: задача
+    видела 1000 карточек из 1865 и не находила предложения, а
+    загрузчик каталога из-за того же предела завёл 41 дубль.
+    """
+    rows, offset = [], 0
+    while True:
+        part, code = rest('GET', f'{path}&limit=1000&offset={offset}')
+        if code != 200 or not isinstance(part, list):
+            return None, code
+        rows += part
+        if len(part) < 1000:
+            return rows, 200
+        offset += 1000
+
+
 def collect(shop):
     found = {}
     for section in shop['sections']:
@@ -197,9 +230,10 @@ def sync(shop, supplier, by_name):
               f'возможно, изменилась разметка каталога')
         return
 
-    mine, code = rest('GET', f'/rest/v1/offers?select=id,product_id,price'
-                             f'&supplier_id=eq.{supplier}&limit=5000')
-    if code != 200 or not isinstance(mine, list):
+    mine, code = fetch_all(f'/rest/v1/offers'
+                           f'?select=id,product_id,price,product_url'
+                           f'&supplier_id=eq.{supplier}&order=id')
+    if code != 200 or mine is None:
         print(f'::error::{shop["title"]}: предложения не прочитались, HTTP {code}')
         return
     existing = {o['product_id']: o for o in mine}
@@ -216,12 +250,17 @@ def sync(shop, supplier, by_name):
             # этот товар» принимается при заливке каталога, а не здесь.
             unmatched += 1
             continue
-        if abs(float(offer['price']) - row['price']) < 0.005:
+        # Ссылка на товар меняется редко, но проставить её надо и тем
+        # предложениям, что заведены до миграции 0045.
+        url_changed = row.get('url') and offer.get('product_url') != row['url']
+        if abs(float(offer['price']) - row['price']) < 0.005 and not url_changed:
             same += 1
             continue
         if not DRY:
-            _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}",
-                        {'price': row['price'], 'in_stock': row['in_stock']})
+            patch = {'price': row['price'], 'in_stock': row['in_stock']}
+            if row.get('url'):
+                patch['product_url'] = row['url']
+            _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}", patch)
             if c not in (200, 204):
                 print(f'    цену не обновить, предложение {offer["id"]}: {c}')
                 failed += 1
@@ -253,8 +292,8 @@ def main():
               + ', '.join(e for s in SHOPS for e in s['env']))
         return 0
 
-    products, code = rest('GET', '/rest/v1/products?select=id,name_norm&limit=5000')
-    if code != 200 or not isinstance(products, list):
+    products, code = fetch_all('/rest/v1/products?select=id,name_norm&order=id')
+    if code != 200 or products is None:
         print(f'::error::Не удалось прочитать товары: HTTP {code}')
         return 1
     by_name = {p['name_norm']: p['id'] for p in products if p.get('name_norm')}

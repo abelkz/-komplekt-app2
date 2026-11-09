@@ -11,6 +11,7 @@ class Offer {
     this.phone,
     this.whatsapp,
     this.website,
+    this.productUrl,
     this.priceUpdatedAt,
     this.prevPrice,
     this.supplierVerified = false,
@@ -29,6 +30,11 @@ class Offer {
   final String? phone;
   final String? whatsapp;
   final String? website;
+
+  /// Страница этого товара у продавца (миграция 0045). Пусто — ведём
+  /// на сайт магазина: лучше главная, чем никуда.
+  final String? productUrl;
+
   final DateTime? priceUpdatedAt;
 
   /// Цена до последнего изменения — по ней показываем ▼/▲ на карточке.
@@ -90,6 +96,7 @@ class Offer {
       phone: sup['phone'] as String?,
       whatsapp: sup['whatsapp'] as String?,
       website: sup['website'] as String?,
+      productUrl: m['product_url'] as String?,
       priceUpdatedAt: m['price_updated_at'] != null
           ? DateTime.tryParse(m['price_updated_at'].toString())
           : null,
