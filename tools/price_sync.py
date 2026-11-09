@@ -162,6 +162,7 @@ def rest(method, path, body=None):
 def collect(shop):
     found = {}
     for section in shop['sections']:
+        previous = None
         for page in range(1, shop['pages'] + 1):
             url = shop['base'] + shop['page'](section, page)
             out = curl(['curl', '-s', '--max-time', '45', '-A', UA, url])
@@ -170,11 +171,16 @@ def collect(shop):
             rows = shop['parse'](out.stdout.decode('utf-8', 'replace'))
             if not rows:
                 break
-            before = len(found)
+            # Конец раздела: страница повторила предыдущую. Сравниваем
+            # именно страницы, а не накопленный итог: разделы у магазина
+            # пересекаются, и «новых имён не прибавилось» — это обычное
+            # дело в середине обхода, а не признак конца.
+            keys = set(rows)
+            if keys == previous:
+                break
+            previous = keys
             found.update(rows)
             time.sleep(PAUSE)
-            if len(found) == before:      # страницы пошли по кругу
-                break
         print(f'    {section}: всего {len(found)}')
     return found
 
