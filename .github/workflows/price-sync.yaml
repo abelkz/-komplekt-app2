@@ -12,15 +12,16 @@ name: Синхронизация цен поставщика
 #     SUPABASE_URL        — адрес проекта (уже есть в секретах)
 #
 #   Settings → Secrets and variables → Actions → Variables
-#     PRICE_SYNC_SUPPLIER_ID — id компании-поставщика в таблице suppliers,
-#                              от чьего имени показываются цены
-#     PRICE_SYNC_OWNER_ID    — (необязательно) uuid пользователя-владельца
-#                              предложений
+#     PRICE_SYNC_MEGASTROY_ID    — id компании в suppliers для megastroy.kz
+#                                  (старое имя PRICE_SYNC_SUPPLIER_ID тоже
+#                                  понимается)
+#     PRICE_SYNC_MIRCERAMIKI_ID  — то же для mirceramiki.kz
 #
-# Пока PRICE_SYNC_SUPPLIER_ID не задан, запуск завершается сообщением
-# и ничего не меняет. Это предохранитель, а не недоделка: цена в
-# каталоге всегда показывается от имени конкретного продавца, и
-# включать её можно только по договорённости с ним.
+# Каждый магазин синхронизируется ОТДЕЛЬНО и только если его переменная
+# задана. Ни одной не задано — запуск завершается сообщением и ничего
+# не меняет. Это предохранитель, а не недоделка: цена в каталоге всегда
+# показывается от имени конкретного продавца, и включать её можно
+# только по договорённости с ним.
 #
 # Секретный ключ обходит все политики базы. Он лежит только в секретах
 # GitHub и попадает в один шаг — в логи не печатается.
@@ -53,7 +54,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           PRICE_SYNC_SUPPLIER_ID: ${{ vars.PRICE_SYNC_SUPPLIER_ID }}
-          PRICE_SYNC_OWNER_ID: ${{ vars.PRICE_SYNC_OWNER_ID }}
+          PRICE_SYNC_MEGASTROY_ID: ${{ vars.PRICE_SYNC_MEGASTROY_ID }}
+          PRICE_SYNC_MIRCERAMIKI_ID: ${{ vars.PRICE_SYNC_MIRCERAMIKI_ID }}
           # По кнопке — пробный прогон по умолчанию; по расписанию —
           # настоящий. Случайно залить цены одним нажатием нельзя.
           PRICE_SYNC_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
