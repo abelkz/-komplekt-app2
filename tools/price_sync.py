@@ -68,7 +68,11 @@ def parse_mirceramiki(page):
     rows = {}
     for block in CARD_MIR.findall(page):
         name = re.search(r'class="card-text-link">([^<]{8,200})<', block)
-        price = re.search(r'class="new-price">([\d\s ]+)', block)
+        # Со скидкой цена в new-price (рядом перечёркнутая old-price),
+        # без скидки — в normal-price. Читать только new-price значит
+        # терять треть каталога, причём незаметно: ошибки нет, просто
+        # товаров меньше.
+        price = re.search(r'class="(?:new|normal)-price">([\d\s ]+)', block)
         if not name or not price:
             continue
         digits = re.sub(r'[^\d]', '', price.group(1))
