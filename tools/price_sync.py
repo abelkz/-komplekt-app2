@@ -177,6 +177,25 @@ def rest(method, path, body=None):
         return raw, int(code or 0)
 
 
+def fetch_all(path):
+    """Читает таблицу постранично.
+
+    PostgREST отдаёт максимум 1000 строк, и `limit=5000` этого НЕ
+    отменяет — лишнее молча отрезается. На этом уже обожглись: задача
+    видела 1000 карточек из 1865 и не находила предложения, а
+    загрузчик каталога из-за того же предела завёл 41 дубль.
+    """
+    rows, offset = [], 0
+    while True:
+        part, code = rest('GET', f'{path}&limit=1000&offset={offset}')
+        if code != 200 or not isinstance(part, list):
+            return None, code
+        rows += part
+        if len(part) < 1000:
+            return rows, 200
+        offset += 1000
+
+
 def collect(shop):
     found = {}
     for section in shop['sections']:
@@ -211,10 +230,10 @@ def sync(shop, supplier, by_name):
               f'возможно, изменилась разметка каталога')
         return
 
-    mine, code = rest('GET', f'/rest/v1/offers'
-                             f'?select=id,product_id,price,product_url'
-                             f'&supplier_id=eq.{supplier}&limit=5000')
-    if code != 200 or not isinstance(mine, list):
+    mine, code = fetch_all(f'/rest/v1/offers'
+                           f'?select=id,product_id,price,product_url'
+                           f'&supplier_id=eq.{supplier}&order=id')
+    if code != 200 or mine is None:
         print(f'::error::{shop["title"]}: предложения не прочитались, HTTP {code}')
         return
     existing = {o['product_id']: o for o in mine}
@@ -273,8 +292,8 @@ def main():
               + ', '.join(e for s in SHOPS for e in s['env']))
         return 0
 
-    products, code = rest('GET', '/rest/v1/products?select=id,name_norm&limit=5000')
-    if code != 200 or not isinstance(products, list):
+    products, code = fetch_all('/rest/v1/products?select=id,name_norm&order=id')
+    if code != 200 or products is None:
         print(f'::error::Не удалось прочитать товары: HTTP {code}')
         return 1
     by_name = {p['name_norm']: p['id'] for p in products if p.get('name_norm')}
