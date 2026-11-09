@@ -167,7 +167,16 @@ KASPI_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
 
 
 def kaspi_sellers(kaspi_id):
-    """Продавцы одного товара с ценами. None — запрос не удался."""
+    """Продавцы одного товара: {номер продавца: цена}.
+
+    Ключ — номер, а не имя. Имя для сопоставления не годится: «Мир
+    Керамики» есть и у нас как партнёр, и на Kaspi как продавец, а
+    когда объявления развели на отдельного поставщика, имя разошлось —
+    и задача решила, что товар сняли с продажи у 50 позиций сразу.
+    Номер продавца лежит в offers.supplier_sku с заливки.
+
+    None — запрос не удался.
+    """
     body = json.dumps({'cityId': KASPI_CITY, 'id': kaspi_id,
                        'merchantUID': '', 'limit': 8, 'page': 0,
                        'sort': True, 'installationId': '-1'})
@@ -187,10 +196,10 @@ def kaspi_sellers(kaspi_id):
         return None
     found = {}
     for o in (rows.get('offers') or []):
-        name = (o.get('merchantName') or '').strip().lower()
+        mid = str(o.get('merchantId') or '').strip()
         price = o.get('price')
-        if name and price:
-            found[name] = min(float(price), found.get(name, float('inf')))
+        if mid and price:
+            found[mid] = min(float(price), found.get(mid, float('inf')))
     return found
 
 
@@ -199,9 +208,8 @@ def sync_kaspi():
     if code != 200 or mine is None:
         print(f'::error::Kaspi: поставщики не прочитались, HTTP {code}')
         return
-    by_name = {s['name'].strip().lower(): s['id'] for s in mine
-               if KASPI_MARK in (s.get('about') or '')}
-    if not by_name:
+    marked = {s['id'] for s in mine if KASPI_MARK in (s.get('about') or '')}
+    if not marked:
         print('Kaspi: ни одного поставщика с пометкой площадки — пропуск.')
         return
 
@@ -218,21 +226,26 @@ def sync_kaspi():
         kid = (p.get('attrs') or {}).get('kaspi_id')
         if kid:
             targets[p['id']] = str(kid)
-    print(f'  карточек Kaspi: {len(targets)} | продавцов площадки: '
-          f'{len(by_name)}')
+    print(f'  карточек Kaspi: {len(targets)} | поставщиков площадки: '
+          f'{len(marked)}')
     if not targets:
         return
 
     offers, code = fetch_all('/rest/v1/offers?select=id,product_id,'
-                             'supplier_id,price,in_stock&order=id')
+                             'supplier_id,price,in_stock,supplier_sku'
+                             '&order=id')
     if code != 200 or offers is None:
         print(f'::error::Kaspi: предложения не прочитались, HTTP {code}')
         return
-    known = set(by_name.values())
+    # Карточка → номер продавца → наше предложение. Предложения без
+    # номера пропускаем: сопоставить их с ответом Kaspi нечем, а
+    # угадывать по имени — та самая ошибка, из-за которой 50 позиций
+    # разом «снялись с продажи».
     existing = {}
     for o in offers:
-        if o['supplier_id'] in known:
-            existing.setdefault(o['product_id'], {})[o['supplier_id']] = o
+        if o['supplier_id'] in marked and o.get('supplier_sku'):
+            existing.setdefault(o['product_id'], {})[
+                str(o['supplier_sku']).strip()] = o
 
     updated = same = gone = strangers = failed = 0
     for pid, kid in targets.items():
@@ -242,14 +255,10 @@ def sync_kaspi():
             failed += 1
             continue
         ours = existing.get(pid, {})
-        for name, price in found.items():
-            sid = by_name.get(name)
-            if sid is None:
-                strangers += 1          # новый продавец — только в отчёт
-                continue
-            offer = ours.get(sid)
+        for mid, price in found.items():
+            offer = ours.get(mid)
             if offer is None:
-                strangers += 1
+                strangers += 1          # новый продавец — только в отчёт
                 continue
             if (abs(float(offer['price']) - price) < 0.005
                     and offer['in_stock']):
@@ -265,10 +274,8 @@ def sync_kaspi():
         # Продавец больше не показывает товар: цену не трогаем, снимаем
         # наличие. Удалять нельзя — завтра он может вернуться, а история
         # цен и избранное привязаны к предложению.
-        for sid, offer in ours.items():
-            if sid in {by_name[n] for n in found if n in by_name}:
-                continue
-            if not offer['in_stock']:
+        for mid, offer in ours.items():
+            if mid in found or not offer['in_stock']:
                 continue
             if not DRY:
                 rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}",
