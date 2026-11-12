@@ -29,7 +29,7 @@ class AdminScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 8,
+      length: 9,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Панель'),
@@ -45,6 +45,12 @@ class AdminScreen extends ConsumerWidget {
             // дел — сюда заходят по необходимости, а не каждый день.
             Tab(text: 'Марки'),
             Tab(text: 'Дубли'),
+            // Сопоставление рядом с «Дублями»: это тоже наведение порядка
+            // в каталоге, и так же — работа глазами, которую нельзя
+            // доверить машине. В счётчик дел не идёт по той же причине,
+            // что и «Дубли»: это разбор накопившегося, а не заявка,
+            // которая кого-то ждёт.
+            Tab(text: 'Сопоставление'),
             // Рассылка в самом конце нарочно: это единственное действие в
             // панели, которое уходит наружу к живым людям и не отменяется.
             // Незачем держать её под пальцем рядом с повседневным разбором.
@@ -59,6 +65,7 @@ class AdminScreen extends ConsumerWidget {
           _ReportsTab(),
           _BrandsTab(),
           _DuplicatesTab(),
+          _MatchTab(),
           _BroadcastTab(),
         ]),
       ),
@@ -1608,6 +1615,255 @@ void _deleteBrand(BuildContext context, WidgetRef ref, Brand brand) {
 /// не появляются (нормализация, миграция 0040), но накопившиеся
 /// разобрать больше нечем — удалить карточку запросом нельзя, на неё
 /// ссылаются избранное, подборки, отзывы и история цен.
+// ─────────────────────────── Сопоставление ───────────────────────────
+//
+// Карточки справочника без цены и предложенные к ним товары магазина.
+// Машина только ПРЕДЛАГАЕТ: названия у нас и у магазина разные
+// («Антисептик для дерева 2в1 Акватекс полуматовый Сосна 0,8л» против
+// «СОСТАВ АКВАТЕКС СОСНА 0,8Л»), а ошибиться здесь дорого — по нашей
+// карточке «Dulux Diamond Max Protect 9л» магазин отдаёт 1 л, 2,5 л и
+// 10 л, девятилитровой у него нет. Цена не того объёма хуже, чем
+// «цена не указана»: человек приедет в магазин и уедет злым.
+//
+// Поэтому решение принимает человек, и цена показана прямо в кнопке —
+// чтобы выбирать, глядя на неё, а не на одно название.
+
+class _MatchTab extends ConsumerWidget {
+  const _MatchTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final queue = ref.watch(adminMatchQueueProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(adminMatchQueueProvider),
+      child: AsyncValueView<List<MatchQueueItem>>(
+        value: queue,
+        onRetry: () => ref.invalidate(adminMatchQueueProvider),
+        isEmpty: (d) => d.isEmpty,
+        empty: const EmptyState(
+          title: 'Сопоставлять нечего',
+          subtitle: 'Либо всё разобрано, либо очередь ещё не наполняли — '
+              'её готовит tools/match_candidates.py. Карточка без цены '
+              'сама по себе законна: по ней видно, что товар в каталоге '
+              'знают.',
+          icon: Icons.done_all,
+        ),
+        data: (list) => ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          itemCount: list.length + 1,
+          itemBuilder: (_, i) => i == 0
+              ? const _MatchHint()
+              : _MatchCard(item: list[i - 1]),
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchHint extends StatelessWidget {
+  const _MatchHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.visibility_outlined, size: 18, color: c.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Машина предлагает, решаете вы. Сверяйте объём и размер: '
+              '«1 л» и «9 л» отличаются одним символом, но это разные '
+              'товары. Не уверены — «Ничего не подходит»: карточка '
+              'останется без цены, и это нормально.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: c.gray,
+                    height: 1.4,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MatchCard extends ConsumerStatefulWidget {
+  const _MatchCard({required this.item});
+  final MatchQueueItem item;
+
+  @override
+  ConsumerState<_MatchCard> createState() => _MatchCardState();
+}
+
+class _MatchCardState extends ConsumerState<_MatchCard> {
+  bool _busy = false;
+
+  Future<void> _accept(MatchCandidate c) async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(adminRepositoryProvider).acceptMatch(c.id);
+      ref.invalidate(adminMatchQueueProvider);
+      refreshAppData(ref);
+      messenger.showSnackBar(SnackBar(
+        content: Text('Цена ${Formatters.price(c.price)} привязана'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reject() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(adminRepositoryProvider)
+          .rejectMatch(widget.item.productId);
+      ref.invalidate(adminMatchQueueProvider);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final item = widget.item;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('НАША КАРТОЧКА',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: c.faint,
+                    letterSpacing: 1.1,
+                  )),
+          const SizedBox(height: 4),
+          Text(item.productName,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: c.ink)),
+          const SizedBox(height: 14),
+          Text('ЧТО НАШЛОСЬ У МАГАЗИНА',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: c.faint,
+                    letterSpacing: 1.1,
+                  )),
+          const SizedBox(height: 8),
+          for (final cand in item.candidates) ...[
+            _CandidateRow(
+              candidate: cand,
+              busy: _busy,
+              onAccept: () => _accept(cand),
+            ),
+            const SizedBox(height: 8),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _busy ? null : _reject,
+              child: const Text('Ничего не подходит'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CandidateRow extends StatelessWidget {
+  const _CandidateRow({
+    required this.candidate,
+    required this.busy,
+    required this.onAccept,
+  });
+
+  final MatchCandidate candidate;
+  final bool busy;
+  final VoidCallback onAccept;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: c.paper,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.line),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(candidate.title,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: c.ink)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(Formatters.price(candidate.price),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: c.accent)),
+                    const SizedBox(width: 10),
+                    // Похожесть показываем честно: это догадка машины.
+                    Text('совпадение ${(candidate.score * 100).round()}%',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: c.faint)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (candidate.url != null)
+            IconButton(
+              tooltip: 'Открыть у магазина',
+              icon: const Icon(Icons.open_in_new, size: 18),
+              onPressed: () => Launchers.website(candidate.url!),
+            ),
+          FilledButton(
+            onPressed: busy ? null : onAccept,
+            child: const Text('Это он'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DuplicatesTab extends ConsumerWidget {
   const _DuplicatesTab();
 

@@ -56,6 +56,68 @@ class Brand {
       );
 }
 
+/// Предложенный машиной товар магазина для карточки без цены
+/// (таблица `price_match_candidates`, миграция 0048).
+class MatchCandidate {
+  const MatchCandidate({
+    required this.id,
+    required this.title,
+    required this.price,
+    required this.score,
+    this.url,
+  });
+
+  final int id;
+
+  /// Как товар называется у магазина — обычно капсом и короче нашего.
+  final String title;
+
+  final double price;
+
+  /// Похожесть названий. Показываем её человеку честно: это догадка
+  /// машины, а не уверенность.
+  final double score;
+
+  final String? url;
+
+  factory MatchCandidate.fromMap(Map<String, dynamic> m) => MatchCandidate(
+        id: (m['id'] as num).toInt(),
+        title: m['title'] as String? ?? '',
+        price: (m['price'] as num).toDouble(),
+        score: (m['score'] as num?)?.toDouble() ?? 0,
+        url: m['url'] as String?,
+      );
+}
+
+/// Карточка без цены и предложенные к ней товары магазина
+/// (RPC `admin_match_queue`, миграция 0048).
+class MatchQueueItem {
+  const MatchQueueItem({
+    required this.productId,
+    required this.productName,
+    required this.candidates,
+    this.categorySlug,
+    this.imageUrl,
+  });
+
+  final int productId;
+  final String productName;
+  final List<MatchCandidate> candidates;
+  final String? categorySlug;
+  final String? imageUrl;
+
+  factory MatchQueueItem.fromMap(Map<String, dynamic> m) => MatchQueueItem(
+        productId: (m['product_id'] as num).toInt(),
+        productName: m['product_name'] as String? ?? '',
+        categorySlug: m['category_slug'] as String?,
+        imageUrl: m['image_url'] as String?,
+        candidates: [
+          for (final c in (m['candidates'] as List? ?? const []))
+            MatchCandidate.fromMap(c as Map<String, dynamic>),
+        ],
+      );
+}
+
 /// Карточка-дубль каталога (RPC `admin_duplicate_products`, миграция 0041).
 class DuplicateCard {
   const DuplicateCard({
@@ -790,6 +852,48 @@ class AdminRepository {
   /// Необратимо, поэтому экран обязан спросить подтверждение. Старый
   /// артикул база запоминает алиасом — следующий импорт того же прайса
   /// не заведёт дубль заново.
+  /// Очередь сопоставления: карточки без цены и предложенные к ним
+  /// товары магазина (миграция 0048).
+  ///
+  /// Пустая очередь — нормальное состояние, а не ошибка: либо всё
+  /// разобрано, либо `tools/match_candidates.py` ещё не запускали.
+  Future<List<MatchQueueItem>> matchQueue({int limit = 50}) async {
+    try {
+      final rows = await supabase.rpc('admin_match_queue',
+          params: {'p_limit': limit});
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          MatchQueueItem.fromMap(r),
+      ];
+    } catch (e) {
+      if (e.toString().contains('admin_match_queue')) {
+        throw const Failure('Функция ещё не создана — примените миграцию 0048');
+      }
+      throw mapError(e, fallback: 'Не удалось загрузить очередь сопоставления');
+    }
+  }
+
+  /// «Это тот самый товар»: заводит предложение магазина на карточку.
+  Future<void> acceptMatch(int candidateId) async {
+    try {
+      await supabase
+          .rpc('admin_accept_match', params: {'p_candidate': candidateId});
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось подтвердить сопоставление');
+    }
+  }
+
+  /// «Ничего не подходит»: закрывает все предложения по карточке.
+  /// Карточка остаётся в каталоге без цены — это законное состояние.
+  Future<void> rejectMatch(int productId) async {
+    try {
+      await supabase
+          .rpc('admin_reject_match', params: {'p_product': productId});
+    } catch (e) {
+      throw mapError(e, fallback: 'Не удалось отклонить предложения');
+    }
+  }
+
   Future<void> mergeProducts({required int keep, required int drop}) async {
     try {
       await supabase
