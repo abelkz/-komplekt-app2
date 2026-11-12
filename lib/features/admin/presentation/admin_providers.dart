@@ -32,6 +32,10 @@ final adminBrandsProvider =
 final adminDuplicatesProvider = FutureProvider<List<DuplicateGroup>>(
     (ref) => ref.read(adminRepositoryProvider).duplicates());
 
+/// Очередь сопоставления карточек без цены с товарами магазина (0048).
+final adminMatchQueueProvider = FutureProvider<List<MatchQueueItem>>(
+    (ref) => ref.read(adminRepositoryProvider).matchQueue());
+
 // ──────────────────────────── Рассылка ────────────────────────────
 
 /// Журнал отправленных объявлений.
