@@ -128,6 +128,37 @@ class CatalogRepository {
     }
   }
 
+  /// Товары, у которых несколько продавцов и цены расходятся.
+  ///
+  /// Считает база (RPC `price_spread`, миграция 0046) и по всему каталогу.
+  /// Раньше секция «Где цены расходятся» набиралась из первой страницы
+  /// ленты — 20 самых новых карточек, — и показывала товары с одной ценой,
+  /// то есть обещала выгоду там, где её нет. Разброс это свойство карточки,
+  /// а не того, что приложение успело загрузить.
+  ///
+  /// Возвращаем готовые [Product], а не отдельную модель: процент на
+  /// карточке считает `savingPercent` из тех же предложений, поэтому цифра
+  /// в секции и цифра на карточке совпадают по построению.
+  ///
+  /// Пустой список нормален: если у всех товаров по одному продавцу,
+  /// сравнивать нечего и секцию показывать не надо.
+  Future<List<Product>> priceSpread({int limit = 12}) async {
+    final rows = await supabase.rpc('price_spread', params: {'p_limit': limit});
+    final list = (rows as List).cast<Map<String, dynamic>>();
+    if (list.isEmpty) return const [];
+
+    // Порядок из RPC — по величине разрыва; PostgREST его не сохранит,
+    // поэтому восстанавливаем по исходному списку.
+    final order = [for (final r in list) r['product_id'].toString()];
+    final products = await supabase
+        .from('products')
+        .select(productSelect)
+        .inFilter('id', [for (final r in list) r['product_id']]);
+
+    return products.map<Product>((m) => Product.fromMap(m)).toList()
+      ..sort((a, b) => order.indexOf(a.id).compareTo(order.indexOf(b.id)));
+  }
+
   /// Товары по категории.
   Future<List<Product>> byCategory(String slug) async {
     try {
