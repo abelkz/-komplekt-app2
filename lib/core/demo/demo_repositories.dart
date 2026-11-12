@@ -122,6 +122,20 @@ class DemoCatalogRepository extends CatalogRepository {
   Future<List<Product>> feed({int limit = 20, int offset = 0}) async =>
       DemoData.products.skip(offset).take(limit).toList();
 
+  /// В живой базе это считает RPC `price_spread` (0046), здесь — то же
+  /// правило по демо-данным. Переопределено нарочно: на демо-режиме
+  /// собираются публичный APK и веб-превью, и секция «Где цены
+  /// расходятся» — ровно то, ради чего приложение открывают. Без
+  /// подмены запрос ушёл бы в неинициализированный Supabase, провайдер
+  /// поймал бы отказ и секции на витрине не было бы вовсе.
+  @override
+  Future<List<Product>> priceSpread({int limit = 12}) async {
+    final withSpread =
+        DemoData.products.where((p) => p.savingPercent > 0).toList()
+          ..sort((a, b) => b.savingPercent.compareTo(a.savingPercent));
+    return withSpread.take(limit).toList();
+  }
+
   @override
   Future<Product> byId(String id) async {
     final p = DemoData.productById(id);

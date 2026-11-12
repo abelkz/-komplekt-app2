@@ -105,10 +105,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final categories = ref.watch(categoriesProvider);
-    final feed = ref.watch(feedProvider);
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final isDark = themeMode == ThemeMode.dark;
     final drops = ref.watch(priceDropsProvider).valueOrNull ?? const [];
+    final spread =
+        ref.watch(priceSpreadProvider).valueOrNull ?? const <Product>[];
     final city = ref.watch(settingsProvider.select((s) => s.city));
     final specCount = ref.watch(collectionsItemCountProvider);
     final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
@@ -120,6 +121,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ref.invalidate(feedProvider);
             ref.invalidate(categoriesProvider);
             ref.invalidate(priceDropsProvider);
+            ref.invalidate(priceSpreadProvider);
           },
           child: CustomScrollView(
             slivers: [
@@ -254,25 +256,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverToBoxAdapter(child: _PriceDropsRow(drops: drops)),
               ],
 
-              // Здесь не «подешевело»: feedProvider сортирует по
-              // savingPercent — это разброс между самым дешёвым и самым
-              // дорогим предложением на один товар, а не падение цены.
-              // Называем тем, чем оно является.
-              SliverToBoxAdapter(
-                child: _SectionHeader(
-                    title: 'Где цены расходятся', tag: 'ВЫГОДА'),
-              ),
-              SliverToBoxAdapter(
-                child: feed.when(
-                  loading: () => const SizedBox(
-                    height: 190,
-                    child: Center(
-                        child: CircularProgressIndicator(strokeWidth: 2.5)),
-                  ),
-                  error: (_, __) => const SizedBox(height: 8),
-                  data: (products) => _HotDealsRow(products: products),
+              // ── Где цены расходятся ──
+              // Здесь не «подешевело», а разброс между самым дешёвым и самым
+              // дорогим предложением на один товар — «где переплачивают».
+              //
+              // Считает база по всему каталогу (RPC price_spread, 0046).
+              // Раньше секция набиралась из первой страницы ленты: 20 самых
+              // новых карточек сортировались по разбросу, и первые 10
+              // показывались без всякой проверки, что разброс есть. А самые
+              // новые карточки — свежезалитый магазин с одним продавцом у
+              // каждой, то есть разброс ноль: секция с пометкой «ВЫГОДА»
+              // показывала товары с единственной ценой.
+              //
+              // Пусто — секции нет. Обещать выгоду там, где сравнивать
+              // не с чем, хуже, чем промолчать.
+              if (spread.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: _SectionHeader(
+                      title: 'Где цены расходятся', tag: 'ВЫГОДА'),
                 ),
-              ),
+                SliverToBoxAdapter(child: _HotDealsRow(products: spread)),
+              ],
 
               // ── Сводная смета ──
               // Короткий путь к тому, ради чего прораб и открывает
