@@ -44,6 +44,42 @@ def norm_name(s):
     return re.sub(r'\s+', ' ', s.upper()).strip()
 
 
+# Цену у «Мегастроя» отличает ПОРЯДОК атрибутов, а не сам data-value:
+#
+#   артикул       data-name="Арт." data-value="00000000134"   валюты нет
+#   старая цена   data-currency="KZT" data-value="27790"      в strike_block
+#   текущая цена  data-value="16674" data-currency="KZT"      кнопка покупки
+#
+# Пока бралось первое data-value в куске, в каталог уезжал АРТИКУЛ:
+# «Краска в/д Star Weiss 7,5кг» стоила у нас 134 ₸ вместо 5190 ₸.
+# Ошибка не бросалась в глаза, потому что у товаров с буквенным
+# артикулом (ST0034) регулярка его проскакивала и случайно попадала в
+# цену — часть каталога была верной. Заметил это владелец приложения,
+# открыв карточку рядом с сайтом магазина.
+MEGA_BUY = re.compile(r'data-value="([0-9]+(?:\.[0-9]+)?)"\s+data-currency="KZT"')
+MEGA_SHOWN = re.compile(r'data-currency="KZT"\s+data-value="([0-9]+(?:\.[0-9]+)?)"')
+
+
+def megastroy_price(part):
+    """Текущая цена товара из его куска разметки, или None.
+
+    Сначала кнопка покупки — она несёт именно ту цену, по которой
+    товар кладут в корзину. Если кнопки нет (не в наличии), берём
+    показанную цену, пропуская блок зачёркнутой: иначе товар со
+    скидкой уехал бы к нам дороже, чем он стоит.
+    """
+    m = MEGA_BUY.search(part)
+    if m:
+        return float(m.group(1))
+    for block in part.split('price_matrix_wrapper')[1:]:
+        if 'strike_block' in block[:40]:
+            continue
+        m = MEGA_SHOWN.search(block)
+        if m:
+            return float(m.group(1))
+    return None
+
+
 def parse_megastroy(page):
     """Режем страницу по картинке товара: в куске оказываются название
     (в alt), цена и ссылка на страницу товара.
@@ -51,15 +87,18 @@ def parse_megastroy(page):
     Резать по ссылке-миниатюре нельзя, хотя так было бы прямее: часть
     карточек свёрстана иначе, и на странице их 18 вместо 20 — пропажа
     молчаливая, разбор просто вернёт меньше товаров.
+
+    Признак настоящей карточки — блок с артикулом: по картинке в
+    кусок попадают и баннеры, и рекомендации, и миниатюры галереи
+    (на странице раздела их за три сотни при двадцати товарах).
     """
     rows = {}
     for part in re.split(r'(?=<img[^>]+data-src="/upload/)', page):
         name = re.search(r'alt="([^"]{6,200})"', part)
-        price = re.search(r'data-value="([0-9]+(?:\.[0-9]+)?)"', part)
-        if not name or not price:
+        if not name or 'article_block' not in part:
             continue
-        value = float(price.group(1))
-        if value <= 0:
+        value = megastroy_price(part)
+        if value is None or value <= 0:
             continue
         link = re.search(r'href="(/catalog/[^"]+/\d+/)"', part)
         rows.setdefault(norm_name(html.unescape(name.group(1))), {
