@@ -182,27 +182,62 @@ class CatalogRepository {
 
   /// Поиск по названию, артикулу и марке.
   ///
-  /// Марка хранится в отдельной таблице, поэтому сначала ищем подходящие
-  /// бренды, а потом добавляем их id в общий фильтр — так «Керама» находит
-  /// товары Kerama Marazzi, а «керамо» — керамогранит по названию.
+  /// Считает база (RPC `search_products`, миграция 0047) — и это не
+  /// оптимизация, а исправление. Сравнение букв в букву считало
+  /// множественное число другим словом: «розетка» находила 59 товаров,
+  /// «розетки» — четыре. Запрос из двух слов не находил ничего вообще:
+  /// подстроки «смесители для ванны» нет ни в одном названии.
+  ///
+  /// Функция знает словоформы русского языка, ищет по незаконченному
+  /// слову, понимает размеры через «х» и «x» и терпит опечатки.
+  ///
+  /// Порядок из RPC — по близости к запросу; PostgREST его не сохранит,
+  /// поэтому восстанавливаем по исходному списку. Карточки без цены при
+  /// этом всё равно уходят в конец: внутри каждой части порядок
+  /// релевантности сохраняется.
   Future<List<Product>> search(String query) async {
-    final q = _sanitize(query);
-    if (q.isEmpty) return [];
+    final q = query.trim();
+    if (q.length < 2) return [];
     try {
-      final filters = <String>['name.ilike.%$q%', 'sku.ilike.%$q%'];
-      final brandIds = await _brandIds(q);
-      if (brandIds.isNotEmpty) {
-        filters.add('brand_id.in.(${brandIds.join(',')})');
-      }
       final rows = await supabase
+          .rpc('search_products', params: {'p_query': q, 'p_limit': 100});
+      final list = (rows as List).cast<Map<String, dynamic>>();
+      if (list.isEmpty) return const [];
+
+      final order = [for (final r in list) r['product_id'].toString()];
+      final products = await supabase
           .from('products')
           .select(productSelect)
-          .or(filters.join(','))
-          .limit(100);
-      return _pricedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
+          .inFilter('id', [for (final r in list) r['product_id']]);
+
+      final found = products.map<Product>((m) => Product.fromMap(m)).toList()
+        ..sort((a, b) => order.indexOf(a.id).compareTo(order.indexOf(b.id)));
+      return _pricedFirst(found);
     } catch (e) {
+      // Миграция 0047 могла быть ещё не применена к базе. Поиск важнее
+      // словоформ: лучше найти буква в букву, чем не найти ничего.
+      try {
+        return await _searchLike(q);
+      } catch (_) {}
       throw mapError(e, fallback: 'Поиск не удался');
     }
+  }
+
+  /// Старый поиск буква в букву — запасной путь, если RPC недоступна.
+  Future<List<Product>> _searchLike(String query) async {
+    final q = _sanitize(query);
+    if (q.isEmpty) return const [];
+    final filters = <String>['name.ilike.%$q%', 'sku.ilike.%$q%'];
+    final brandIds = await _brandIds(q);
+    if (brandIds.isNotEmpty) {
+      filters.add('brand_id.in.(${brandIds.join(',')})');
+    }
+    final rows = await supabase
+        .from('products')
+        .select(productSelect)
+        .or(filters.join(','))
+        .limit(100);
+    return _pricedFirst(rows.map<Product>((m) => Product.fromMap(m)).toList());
   }
 
   /// id марок, чьё название похоже на запрос. Ошибку не поднимаем:
