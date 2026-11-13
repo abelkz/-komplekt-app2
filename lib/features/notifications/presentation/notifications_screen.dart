@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -47,7 +48,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           icon: Icons.notifications_none_rounded,
         ),
         data: (list) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(notificationsProvider),
+          onRefresh: () => refreshAndWait(
+            context,
+            () => [ref.refresh(notificationsProvider.future)],
+          ),
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: list.length,

@@ -10,6 +10,7 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/config/build_info.dart';
 import '../../../core/config/env.dart';
 import '../../../core/config/supabase_client.dart';
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -153,10 +154,24 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
       ),
       body: AsyncValueView<Product>(
         value: product,
+        keepData: true,
         onRetry: () => ref.invalidate(productProvider(productId)),
-        data: (p) => _ProductBody(product: p),
+        // Цена — то, ради чего карточку открывают повторно. Раньше увидеть
+        // свежую можно было только выйдя из карточки и зайдя заново.
+        data: (p) => RefreshIndicator(
+          onRefresh: () => pullToRefresh(
+            context,
+            ref,
+            wait: () => [ref.refresh(productProvider(productId).future)],
+          ),
+          child: _ProductBody(product: p),
+        ),
       ),
       bottomNavigationBar: product.maybeWhen(
+        // Нижняя панель не должна пропадать, пока карточка обновляется
+        // или если обновление не удалось.
+        skipLoadingOnReload: true,
+        skipError: true,
         data: (p) => _AddToCollectionBar(product: p),
         orElse: () => null,
       ),
@@ -177,6 +192,7 @@ class _ProductBody extends StatelessWidget {
     final best = offers.isNotEmpty ? offers.first : null;
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         _Hero(product: product),

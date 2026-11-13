@@ -56,7 +56,11 @@ class ProfileScreen extends ConsumerWidget {
         // Потянуть вниз — перечитать профиль: так виден только что
         // включённый тариф, без перезапуска приложения
         child: RefreshIndicator(
-          onRefresh: () async => refreshAppData(ref),
+          onRefresh: () => pullToRefresh(
+            context,
+            ref,
+            wait: () => [ref.refresh(myProfileProvider.future)],
+          ),
           child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
           children: [

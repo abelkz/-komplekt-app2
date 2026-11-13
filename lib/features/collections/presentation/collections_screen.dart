@@ -73,7 +73,11 @@ class CollectionsScreen extends ConsumerWidget {
                 // Показываем и пустые подборки — иначе после создания
                 // на экране ничего не появляется и кажется, что зависло.
                 data: (list) => RefreshIndicator(
-                  onRefresh: () async => refreshAppData(ref),
+                  onRefresh: () => pullToRefresh(
+                    context,
+                    ref,
+                    wait: () => [ref.refresh(collectionsProvider.future)],
+                  ),
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
@@ -115,10 +116,13 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                     _Header(count: all.length),
                     Expanded(
                       child: RefreshIndicator(
-                        onRefresh: () async {
-                          ref.invalidate(favoriteProductsProvider);
-                          ref.invalidate(priceDropsProvider);
-                        },
+                        onRefresh: () => refreshAndWait(
+                          context,
+                          () => [
+                            ref.refresh(favoriteProductsProvider.future),
+                            ref.refresh(priceDropsProvider.future),
+                          ],
+                        ),
                         child: ListView(
                           // Снизу место под плавающую панель, иначе она
                           // накроет последнюю карточку.

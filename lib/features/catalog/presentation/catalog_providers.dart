@@ -211,16 +211,17 @@ const priceDropsDays = 30;
 /// Пустой список — нормальное состояние, а не ошибка: если никто не снижал
 /// цену, секцию на главной просто не показываем. Врать «смотрите,
 /// подешевело», когда не подешевело, нельзя.
-final priceDropsProvider = FutureProvider<List<PriceDrop>>((ref) async {
-  try {
-    return await ref
-        .watch(catalogRepositoryProvider)
-        .priceDrops(days: priceDropsDays);
-  } catch (_) {
-    // Миграция 0027 могла быть ещё не применена к базе — в этом случае
-    // главная должна открыться как обычно, просто без этой секции.
-    return const [];
-  }
+///
+/// Ошибку здесь НЕ превращаем в пустой список, хотя раньше превращали.
+/// Экраны читают `valueOrNull ?? []`, поэтому при сбое первой загрузки
+/// (в том числе пока миграция 0027 не применена) секции просто нет — как
+/// и было. Разница в обновлении: пустой ответ затирал уже показанное, и
+/// стоило потянуть «обновить» без связи, как секция исчезала. Ошибка же
+/// прежние данные сохраняет.
+final priceDropsProvider = FutureProvider<List<PriceDrop>>((ref) {
+  return ref
+      .watch(catalogRepositoryProvider)
+      .priceDrops(days: priceDropsDays);
 });
 
 /// Товары, где цены разных продавцов расходятся сильнее всего.
@@ -229,14 +230,12 @@ final priceDropsProvider = FutureProvider<List<PriceDrop>>((ref) async {
 /// сравнивать нечего, и секция на главной просто не показывается. Это и
 /// было сломано раньше: секция набиралась из первой страницы ленты и
 /// обещала «выгоду» на карточках с единственной ценой.
-final priceSpreadProvider = FutureProvider<List<Product>>((ref) async {
-  try {
-    return await ref.watch(catalogRepositoryProvider).priceSpread();
-  } catch (_) {
-    // Миграция 0046 могла быть ещё не применена — тогда главная
-    // открывается как обычно, просто без этой секции.
-    return const [];
-  }
+///
+/// Ошибку не глотаем по той же причине, что и у [priceDropsProvider]:
+/// сбой первой загрузки (или не применённая 0046) даёт просто отсутствие
+/// секции, а сбой обновления не стирает уже показанное.
+final priceSpreadProvider = FutureProvider<List<Product>>((ref) {
+  return ref.watch(catalogRepositoryProvider).priceSpread();
 });
 
 /// Товары категории как они есть в базе, без фильтров.
@@ -252,9 +251,18 @@ final categoryProductsProvider =
 });
 
 /// Товары категории с применёнными фильтрами.
+///
+/// Если обновление набора не удалось, фильтруем то, что было загружено
+/// до него. Иначе после неудачного «потянуть — обновить» этот провайдер
+/// застревал бы в ошибке: экран продолжал бы показывать прежний список
+/// (он держит данные, см. `AsyncValueView.keepData`), а чипы фильтров
+/// молча переставали бы что-либо менять.
 final catalogResultsProvider =
     FutureProvider.family<List<Product>, String>((ref, slug) async {
-  final products = await ref.watch(categoryProductsProvider(slug).future);
+  final base = ref.watch(categoryProductsProvider(slug));
+  final products = base.hasError && base.hasValue
+      ? base.requireValue
+      : await ref.watch(categoryProductsProvider(slug).future);
   return applyFilters(products, ref.watch(filtersProvider));
 });
 
@@ -265,9 +273,14 @@ final searchProductsProvider =
 });
 
 /// Результаты поиска по строке запроса.
+///
+/// Про запасной путь при неудачном обновлении — см. [catalogResultsProvider].
 final searchResultsProvider =
     FutureProvider.family<List<Product>, String>((ref, query) async {
-  final products = await ref.watch(searchProductsProvider(query).future);
+  final base = ref.watch(searchProductsProvider(query));
+  final products = base.hasError && base.hasValue
+      ? base.requireValue
+      : await ref.watch(searchProductsProvider(query).future);
   return applyFilters(products, ref.watch(filtersProvider));
 });
 

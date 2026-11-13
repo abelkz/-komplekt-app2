@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/async_value_view.dart';
@@ -93,7 +94,14 @@ class SearchResultsScreen extends ConsumerWidget {
     return AsyncValueView<List<Product>>(
         value: results,
         loading: const SkeletonList(),
-        onRetry: () => ref.invalidate(searchResultsProvider(query)),
+        // Обновление не должно сносить список: пока идёт запрос и если он
+        // не удался, на экране остаётся то, что уже загружено.
+        keepData: true,
+        // Перезапрашиваем сам набор, а не результаты: результаты лишь
+        // накладывают фильтры на уже загруженное. Пока «Повторить» трогал
+        // только их, упавший запрос так и оставался упавшим — кнопка не
+        // делала ничего до перезапуска приложения.
+        onRetry: () => ref.invalidate(searchProductsProvider(query)),
         isEmpty: (d) => d.isEmpty,
         empty: const EmptyState(
           title: 'Ничего не нашлось',
@@ -102,54 +110,65 @@ class SearchResultsScreen extends ConsumerWidget {
         ),
         data: (list) {
           final sponsored = CatalogRepository.sponsoredFrom(list);
-          return CustomScrollView(
-            slivers: [
-              if (sponsored.isNotEmpty)
+          return RefreshIndicator(
+            onRefresh: () => pullToRefresh(
+              context,
+              ref,
+              wait: () => [ref.refresh(searchProductsProvider(query).future)],
+            ),
+            child: CustomScrollView(
+              // Две карточки не заполняют экран — без этого жест на
+              // коротком списке не срабатывал бы вовсе.
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                if (sponsored.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (_, i) {
+                          final s = sponsored[i];
+                          final supplier = s.offer.supplierName.isEmpty
+                              ? 'поставщик'
+                              : s.offer.supplierName;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: ProductGridCard(
+                              product: s.product,
+                              featured: true,
+                              badge: 'ПРОДВИГАЕТСЯ',
+                              priceOverride: s.offer.price,
+                              metaOverride: supplier,
+                              onTap: () => s.offer.supplierId != null
+                                  ? context
+                                      .push(Routes.supplier(s.offer.supplierId!))
+                                  : context.push(Routes.product(s.product.id)),
+                            ),
+                          );
+                        },
+                        childCount: sponsored.length,
+                      ),
+                    ),
+                  ),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  sliver: SliverList(
+                  padding: EdgeInsets.fromLTRB(
+                      16, sponsored.isNotEmpty ? 4 : 12, 16, 24),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      mainAxisExtent: 264,
+                    ),
                     delegate: SliverChildBuilderDelegate(
-                      (_, i) {
-                        final s = sponsored[i];
-                        final supplier = s.offer.supplierName.isEmpty
-                            ? 'поставщик'
-                            : s.offer.supplierName;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: ProductGridCard(
-                            product: s.product,
-                            featured: true,
-                            badge: 'ПРОДВИГАЕТСЯ',
-                            priceOverride: s.offer.price,
-                            metaOverride: supplier,
-                            onTap: () => s.offer.supplierId != null
-                                ? context.push(Routes.supplier(s.offer.supplierId!))
-                                : context.push(Routes.product(s.product.id)),
-                          ),
-                        );
-                      },
-                      childCount: sponsored.length,
+                      (_, i) => ProductGridCard(product: list[i]),
+                      childCount: list.length,
                     ),
                   ),
                 ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                    16, sponsored.isNotEmpty ? 4 : 12, 16, 24),
-                sliver: SliverGrid(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    mainAxisExtent: 264,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (_, i) => ProductGridCard(product: list[i]),
-                    childCount: list.length,
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         });
   }

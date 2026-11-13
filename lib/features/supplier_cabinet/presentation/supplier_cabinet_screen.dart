@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/onboarding/feature_tour.dart';
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
@@ -310,10 +311,13 @@ class _CabinetBodyState extends ConsumerState<_CabinetBody> {
     final stats = ref.watch(myStatsProvider).valueOrNull ?? const {};
 
     return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(myProductsProvider);
-        ref.invalidate(myStatsProvider);
-      },
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [
+          ref.refresh(myProductsProvider.future),
+          ref.refresh(myStatsProvider.future),
+        ],
+      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
