@@ -16,7 +16,15 @@
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const MODEL = "claude-opus-4-8";
+// Opus 5.5 — текущая модель. На ней думание включено всегда: выключить
+// его нельзя (400 на любом уровне), глубина задаётся только через effort.
+const MODEL = "claude-opus-5-5";
+
+// Политика безопасности модели может отклонить запрос (stop_reason
+// "refusal"). Серверный запасной путь перезапускает тот же запрос на
+// другой модели внутри того же вызова — человек не видит отказа на
+// фотографии своей кухни.
+const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -135,10 +143,14 @@ ${catList}
   const client = new Anthropic({ apiKey });
 
   try {
-    const response = await client.messages.create({
+    const response = await client.beta.messages.create({
       model: MODEL,
-      max_tokens: 2000,
+      // Не жадничать: думание тоже считается в выходные токены, а
+      // обрезанный на полуслове JSON не разберётся вовсе.
+      max_tokens: 8000,
       thinking: { type: "adaptive" },
+      betas: [FALLBACK_BETA],
+      fallbacks: "default",
       output_config: {
         effort: "low", // распознавание простое, а человек ждёт ответа
         format: { type: "json_schema", schema },
