@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/onboarding/feature_tour.dart';
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/router/app_router.dart';
@@ -117,13 +118,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(feedProvider);
-            ref.invalidate(categoriesProvider);
-            ref.invalidate(priceDropsProvider);
-            ref.invalidate(priceSpreadProvider);
-          },
+          // Обновляем всё приложение, а не четыре провайдера: на главной
+          // видны ещё колокол с числом уведомлений и итог по подборкам, и
+          // раньше жест их не трогал. И дожидаемся ответа — см. пояснение
+          // у pullToRefresh, почему без этого жест казался неработающим.
+          onRefresh: () => pullToRefresh(
+            context,
+            ref,
+            wait: () => [
+              ref.refresh(categoriesProvider.future),
+              ref.refresh(priceDropsProvider.future),
+              ref.refresh(priceSpreadProvider.future),
+            ],
+          ),
           child: CustomScrollView(
+            // Жест должен срабатывать, даже когда содержимое короче экрана.
+            physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // ── Шапка: марка, город, колокол, тема ──
               //
@@ -234,6 +244,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               SliverToBoxAdapter(
                 child: categories.when(
+                  // Обновление без связи не должно стирать уже показанные
+                  // разделы: есть прежние данные — оставляем их.
+                  skipError: true,
                   loading: () => const _GridSkeleton(),
                   error: (_, __) => const SizedBox.shrink(),
                   data: (list) => _CategoriesBento(categories: list),

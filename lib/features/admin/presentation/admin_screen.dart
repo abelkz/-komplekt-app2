@@ -98,7 +98,15 @@ class _StatsTab extends ConsumerWidget {
     }
 
     return RefreshIndicator(
-      onRefresh: () async => reload(),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [
+          ref.refresh(adminOverviewProvider.future),
+          ref.refresh(adminTopSearchesProvider.future),
+          ref.refresh(adminTopCategoriesProvider.future),
+          ref.refresh(adminSupplierStatsProvider.future),
+        ],
+      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
@@ -574,7 +582,10 @@ class _SuppliersTab extends ConsumerWidget {
     final list = ref.watch(supplierApplicationsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(supplierApplicationsProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(supplierApplicationsProvider.future)],
+      ),
       child: AsyncValueView<List<AppUser>>(
         value: list,
         onRetry: () => ref.invalidate(supplierApplicationsProvider),
@@ -711,7 +722,10 @@ class _PlansTab extends ConsumerWidget {
     final list = ref.watch(subscriptionRequestsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(subscriptionRequestsProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(subscriptionRequestsProvider.future)],
+      ),
       child: AsyncValueView<List<SubRequest>>(
         value: list,
         onRetry: () => ref.invalidate(subscriptionRequestsProvider),
@@ -861,7 +875,10 @@ class _BoostTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(boostOrdersProvider);
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(boostOrdersProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(boostOrdersProvider.future)],
+      ),
       child: AsyncValueView<List<SubRequest>>(
         value: list,
         onRetry: () => ref.invalidate(boostOrdersProvider),
@@ -1099,7 +1116,10 @@ class _ReportsTab extends ConsumerWidget {
     final list = ref.watch(contentReportsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(contentReportsProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(contentReportsProvider.future)],
+      ),
       child: AsyncValueView<List<ContentReport>>(
         value: list,
         onRetry: () => ref.invalidate(contentReportsProvider),
@@ -1298,7 +1318,10 @@ class _BrandsTab extends ConsumerWidget {
     final list = ref.watch(adminBrandsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(adminBrandsProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(adminBrandsProvider.future)],
+      ),
       child: AsyncValueView<List<Brand>>(
         value: list,
         onRetry: () => ref.invalidate(adminBrandsProvider),
@@ -1636,7 +1659,10 @@ class _MatchTab extends ConsumerWidget {
     final queue = ref.watch(adminMatchQueueProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(adminMatchQueueProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(adminMatchQueueProvider.future)],
+      ),
       child: AsyncValueView<List<MatchQueueItem>>(
         value: queue,
         onRetry: () => ref.invalidate(adminMatchQueueProvider),
@@ -1872,7 +1898,10 @@ class _DuplicatesTab extends ConsumerWidget {
     final groups = ref.watch(adminDuplicatesProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(adminDuplicatesProvider),
+      onRefresh: () => refreshAndWait(
+        context,
+        () => [ref.refresh(adminDuplicatesProvider.future)],
+      ),
       child: AsyncValueView<List<DuplicateGroup>>(
         value: groups,
         onRetry: () => ref.invalidate(adminDuplicatesProvider),

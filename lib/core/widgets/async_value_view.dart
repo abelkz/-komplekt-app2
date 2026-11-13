@@ -14,6 +14,7 @@ class AsyncValueView<T> extends StatelessWidget {
     this.loading,
     this.isEmpty,
     this.empty,
+    this.keepData = false,
   });
 
   final AsyncValue<T> value;
@@ -23,9 +24,24 @@ class AsyncValueView<T> extends StatelessWidget {
   final bool Function(T data)? isEmpty;
   final Widget? empty;
 
+  /// Оставлять на экране уже загруженное, пока идёт обновление и если оно
+  /// не удалось.
+  ///
+  /// Нужно экранам с жестом «потянуть — обновить». Без этого список на
+  /// время запроса сменялся бы скелетоном, а при сбое — экраном ошибки:
+  /// человек потянул без связи и потерял то, что только что видел.
+  /// О неудаче в таком случае сообщает сам жест (см. `pullToRefresh`).
+  ///
+  /// По умолчанию выключено: там, где данные зависят от переключателя
+  /// (период в сводке админки), показывать прежние числа под новым
+  /// периодом без всякого признака загрузки было бы обманом.
+  final bool keepData;
+
   @override
   Widget build(BuildContext context) {
     return value.when(
+      skipLoadingOnReload: keepData,
+      skipError: keepData,
       loading: () => loading ?? const _CenterLoader(),
       error: (e, _) => _ErrorState(message: _msg(e), onRetry: onRetry),
       data: (d) {

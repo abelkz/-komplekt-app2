@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/data_refresh.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/launchers.dart';
 import '../../../core/widgets/async_value_view.dart';
@@ -26,8 +27,19 @@ class SupplierScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Витрина продавца')),
       body: AsyncValueView<Supplier>(
         value: supplier,
+        keepData: true,
         onRetry: () => ref.invalidate(supplierProvider(supplierId)),
-        data: (s) => CustomScrollView(
+        data: (s) => RefreshIndicator(
+          onRefresh: () => pullToRefresh(
+            context,
+            ref,
+            wait: () => [
+              ref.refresh(supplierProvider(supplierId).future),
+              ref.refresh(supplierProductsProvider(supplierId).future),
+            ],
+          ),
+          child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(child: _Header(supplier: s)),
             if ((s.about ?? '').isNotEmpty)
@@ -59,6 +71,9 @@ class SupplierScreen extends ConsumerWidget {
               ),
             ),
             products.when(
+              // Обновление не стирает уже показанные товары.
+              skipLoadingOnReload: true,
+              skipError: true,
               loading: () => const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.all(40),
@@ -85,6 +100,7 @@ class SupplierScreen extends ConsumerWidget {
                     ),
             ),
           ],
+          ),
         ),
       ),
     );
