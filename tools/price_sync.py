@@ -31,6 +31,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 UA = 'Mozilla/5.0 (compatible; KomplektPriceSync/1.0; +https://komplekt.kz)'
 PAUSE = 1.5          # пауза между страницами: чужой сервер не наш
@@ -287,6 +288,7 @@ def sync_kaspi():
                 str(o['supplier_sku']).strip()] = o
 
     updated = same = gone = strangers = failed = 0
+    checked = []    # предложения, чью цену площадка сегодня подтвердила
     for pid, kid in targets.items():
         found = kaspi_sellers(kid)
         time.sleep(PAUSE)
@@ -302,6 +304,7 @@ def sync_kaspi():
             if (abs(float(offer['price']) - price) < 0.005
                     and offer['in_stock']):
                 same += 1
+                checked.append(offer['id'])
                 continue
             if not DRY:
                 _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}",
@@ -310,6 +313,7 @@ def sync_kaspi():
                     failed += 1
                     continue
             updated += 1
+            checked.append(offer['id'])
         # Продавец больше не показывает товар: цену не трогаем, снимаем
         # наличие. Удалять нельзя — завтра он может вернуться, а история
         # цен и избранное привязаны к предложению.
@@ -321,9 +325,10 @@ def sync_kaspi():
                      {'in_stock': False})
             gone += 1
 
+    stamped = stamp_checked(checked)
     print(f'  Kaspi: обновлено {updated} | без изменений {same} | '
           f'снято с наличия {gone} | новых продавцов {strangers} | '
-          f'сбоев {failed}')
+          f'сбоев {failed} | отмечено сверенными {stamped}')
     if strangers:
         print(f'::notice::Kaspi: на товарах появилось {strangers} '
               f'предложений от продавцов, которых у нас нет. Новых '
@@ -359,6 +364,45 @@ def rest(method, path, body=None):
         return (json.loads(raw) if raw.strip() else None), int(code or 0)
     except Exception:
         return raw, int(code or 0)
+
+
+def stamp_checked(ids):
+    """Отмечает, что цена этих предложений сегодня сверена с источником.
+
+    ЗАЧЕМ. В карточке товара стоит «Обновлено N дней назад» — по этой
+    строке человек решает, верить ли цене. Берётся она из
+    `price_updated_at`, а его двигает только триггер `offers_track_price`
+    и только когда цена ИЗМЕНИЛАСЬ. Цена, которую мы проверяем каждый
+    день и которая каждый день совпадает, выглядела поэтому заброшенной:
+    у «Мира Керамики» все 1260 предложений показывали «неделю назад»,
+    хотя сверялись с сайтом накануне. Приложение само говорило о себе
+    хуже, чем есть, — и ровно в том месте, где решается вопрос доверия.
+
+    Поэтому подтверждённую цену мы тоже отмечаем сегодняшним числом.
+    Смысл поля теперь «цена подтверждена», а не «цена изменилась»; когда
+    она менялась, по-прежнему видно в `price_history`.
+
+    ЧЕГО НЕЛЬЗЯ. Отмечать предложение, которое в каталоге источника не
+    нашлось. Его дата должна стареть — это единственный честный признак
+    того, что товара у продавца, возможно, уже нет.
+
+    Триггеры на это не реагируют: цена не меняется, значит, нет ни
+    записи в историю, ни `prev_price`, ни уведомления о снижении.
+    """
+    if DRY or not ids:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    done = 0
+    for i in range(0, len(ids), 100):
+        part = ids[i:i + 100]
+        _, c = rest('PATCH',
+                    '/rest/v1/offers?id=in.(%s)' % ','.join(map(str, part)),
+                    {'price_updated_at': now})
+        if c in (200, 204):
+            done += len(part)
+        else:
+            print(f'    отметка о сверке не записалась: HTTP {c}')
+    return done
 
 
 def fetch_all(path):
@@ -423,6 +467,7 @@ def sync(shop, supplier, by_name):
     existing = {o['product_id']: o for o in mine}
 
     updated = same = unmatched = failed = 0
+    checked = []    # предложения, чью цену сайт сегодня подтвердил
     for key, row in prices.items():
         pid = by_name.get(key)
         if pid is None:
@@ -439,6 +484,7 @@ def sync(shop, supplier, by_name):
         url_changed = row.get('url') and offer.get('product_url') != row['url']
         if abs(float(offer['price']) - row['price']) < 0.005 and not url_changed:
             same += 1
+            checked.append(offer['id'])
             continue
         if not DRY:
             patch = {'price': row['price'], 'in_stock': row['in_stock']}
@@ -450,9 +496,12 @@ def sync(shop, supplier, by_name):
                 failed += 1
                 continue
         updated += 1
+        checked.append(offer['id'])
 
+    stamped = stamp_checked(checked)
     print(f'  {shop["title"]}: обновлено {updated} | без изменений {same} | '
-          f'нет предложения {unmatched} | сбоев {failed}')
+          f'нет предложения {unmatched} | сбоев {failed} | '
+          f'отмечено сверенными {stamped}')
 
 
 def main():
