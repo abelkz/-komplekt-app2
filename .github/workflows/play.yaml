@@ -29,6 +29,7 @@ on:
     paths:
       - .github/workflows/play.yaml
       - tool/prepare_android.sh
+      - tool/check_env_bundled.sh
       - pubspec.yaml
       - pubspec.lock
 
@@ -134,6 +135,9 @@ jobs:
           flutter build appbundle --release \
             --build-number="${GITHUB_RUN_NUMBER}" \
             --dart-define=BUILD_TAG="${GITHUB_SHA::7}"
+
+      - name: В сборке есть файл настроек
+        run: bash tool/check_env_bundled.sh build/app/outputs/bundle/release/app-release.aab
 
       - name: Чем подписан файл
         # Отладочная подпись выглядела бы здесь как «CN=Android Debug».
