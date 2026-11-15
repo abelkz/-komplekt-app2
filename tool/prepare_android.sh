@@ -103,6 +103,38 @@ G=android/build.gradle.kts
 { printf 'subprojects {\n    afterEvaluate {\n        val a = extensions.findByName("android")\n        if (a is com.android.build.gradle.BaseExtension) { a.compileSdkVersion(36) }\n    }\n}\n\n'; cat "$G"; } > "$G.tmp" && mv "$G.tmp" "$G"
 echo "→ Gradle: kz.komplekt.app, minSdk 23, compileSdk/targetSdk 36"
 
+# Файл настроек .env обязан попасть в сборку.
+#
+# Он объявлен ресурсом в pubspec.yaml, и Flutter честно кладёт его к
+# остальным. Но упаковщик Android по умолчанию МОЛЧА выбрасывает всё, что
+# начинается с точки (в его списке исключений стоит «.*»). В итоге в
+# списке ресурсов .env значится, а в APK его нет: приложение падает на
+# первой же строке main() с FileNotFoundError, и человек видит заставку,
+# которая не кончается. Ни сборка, ни анализ, ни тесты этого не замечают —
+# нашлось только запуском на эмуляторе 15.11.2026.
+#
+# Убираем «.*» из списка исключений; остальное — как в стандартном.
+python3 - <<'PY'
+import re
+import sys
+
+path = 'android/app/build.gradle.kts'
+src = open(path, encoding='utf-8').read()
+if 'ignoreAssetsPattern' not in src:
+    if len(re.findall(r'^android \{$', src, flags=re.M)) != 1:
+        sys.exit('::error::Шаблон android/app/build.gradle.kts изменился: '
+                 'не нашёл блок android, чтобы сохранить .env в сборке. '
+                 'Поправьте tool/prepare_android.sh.')
+    keep = ('android {\n'
+            '    androidResources {\n'
+            '        ignoreAssetsPattern = '
+            '"!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~"\n'
+            '    }\n')
+    src = re.sub(r'^android \{$\n', keep, src, count=1, flags=re.M)
+    open(path, 'w', encoding='utf-8').write(src)
+print('→ упаковщик не выбрасывает .env')
+PY
+
 if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
   python3 - <<'PY'
 import sys
