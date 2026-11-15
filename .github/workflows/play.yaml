@@ -47,10 +47,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Java 21, а не 17, как в ci.yaml. Выпуск, в отличие от отладочной
+      # сборки, прогоняет lint (задача lintVitalAnalyzeRelease), а lint в
+      # нынешнем Android-плагине собран под Java 21. На 17-й он падает с
+      # «NoSuchMethodError: List.removeLast()» — причём на чужом плагине
+      # (firebase_core), так что по тексту ошибки причину не угадать.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - uses: subosito/flutter-action@v2
         with:
