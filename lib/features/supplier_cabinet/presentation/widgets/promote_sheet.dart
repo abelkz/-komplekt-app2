@@ -105,8 +105,9 @@ class _PromoteSheet extends ConsumerWidget {
           )
         else
           ...options,
-        // На iOS покупка буста скрыта, пока не подключён Apple IAP
-        // (иначе App Store отклонит). На вебе/Android — как прежде.
+        // В мобильных сборках покупка буста скрыта, пока не подключена
+        // оплата самого магазина (см. iapPurchasesHidden). На вебе — как
+        // прежде.
         if (!iapPurchasesHidden) ...[
           const SizedBox(height: 12),
           OutlinedButton.icon(
