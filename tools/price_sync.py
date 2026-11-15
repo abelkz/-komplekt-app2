@@ -139,6 +139,27 @@ def parse_mirceramiki(page):
     return rows
 
 
+def megastroy_page_price(page):
+    """Цена со страницы самого товара, или None.
+
+    Только кнопка покупки: на странице товара ниже идут «похожие» и
+    «с этим покупают» со своими ценами, и запасной путь из
+    megastroy_price() мог бы взять цену соседа.
+    """
+    m = MEGA_BUY.search(page)
+    return float(m.group(1)) if m else None
+
+
+def mirceramiki_page_price(page):
+    """Цена со страницы самого товара, или None. Первая на странице —
+    цена этого товара; блоки с другими товарами идут ниже."""
+    m = re.search(r'class="(?:new|normal)-price">([\d\s\u00a0]+)', page)
+    if not m:
+        return None
+    digits = re.sub(r'[^\d]', '', m.group(1))
+    return float(digits) if digits else None
+
+
 # Магазин добавляется сюда: разделы, разбор страницы и имя переменной
 # с id поставщика. Нет переменной — магазин пропускается молча.
 SHOPS = [
@@ -147,6 +168,7 @@ SHOPS = [
         'base': 'https://megastroy.kz',
         'env': ('PRICE_SYNC_MEGASTROY_ID', 'PRICE_SYNC_SUPPLIER_ID'),
         'parse': parse_megastroy,
+        'page_price': megastroy_page_price,
         'page': lambda s, n: f'{s}?PAGEN_1={n}' if n > 1 else s,
         'pages': 25,
         'sections': [
@@ -172,6 +194,7 @@ SHOPS = [
         'base': 'https://mirceramiki.kz',
         'env': ('PRICE_SYNC_MIRCERAMIKI_ID',),
         'parse': parse_mirceramiki,
+        'page_price': mirceramiki_page_price,
         'page': lambda s, n: f'{s}?page={n}' if n > 1 else s,
         'pages': 12,
         'sections': [
@@ -450,6 +473,75 @@ def collect(shop):
     return found
 
 
+def fetch_status(url):
+    """Страница и код ответа. Код 0 — запрос не состоялся."""
+    out = curl(['curl', '-s', '-L', '--max-time', '45', '-A', UA,
+                '-w', '\n%{http_code}', url])
+    if out is None:
+        return 0, ''
+    text = out.stdout.decode('utf-8', 'replace')
+    body, _, code = text.rpartition('\n')
+    try:
+        return int(code), body
+    except ValueError:
+        return 0, body
+
+
+def recheck_by_page(shop, offers):
+    """Сверяет по странице товара то, чего не нашлось в списках разделов.
+
+    ЗАЧЕМ. Обход разделов находит не всё: товар может выпасть из списка,
+    остаться за пределами обхода или сменить подпись под картинкой. Такие
+    предложения раньше не сверялись вовсе. Проверено 15.11.2026 на 353
+    предложениях, не найденных в списках: у 211 страница товара жива и
+    цена на ней совпадает с нашей, а у 60 («Мегастрой») страница отдаёт
+    404 — товара у магазина больше нет. Именно эти 60 владелец приложения
+    и увидел как «ссылка ведёт на сайт, а не на товар»: магазин на месте
+    удалённой страницы показывает общий каталог.
+
+    Возвращает (подтверждённые id, сколько цен изменилось, ушедшие).
+
+    Ушедшим считается только ответ 404/410. Любой другой сбой — таймаут,
+    403, 5xx — это не «товара нет», а «не знаем»: предложение не трогаем,
+    и его дата продолжает стареть.
+    """
+    page_price = shop.get('page_price')
+    confirmed, changed, gone = [], 0, []
+    if not page_price:
+        return confirmed, changed, gone
+    for offer in offers:
+        code, body = fetch_status(offer['product_url'])
+        time.sleep(PAUSE)
+        if code in (404, 410):
+            gone.append(offer)
+            continue
+        if code != 200:
+            continue
+        price = page_price(body)
+        if price is None:
+            continue
+        ours = float(offer['price'])
+        if abs(ours - price) < 0.005:
+            confirmed.append(offer['id'])
+            continue
+        # Цена со страницы — одно число, вынутое регуляркой. Если оно
+        # отличается от нашей в разы, вероятнее ошибка разбора, чем
+        # настоящая цена: артикул вместо цены уже однажды уезжал в каталог
+        # (CLAUDE.md §10). Такое не переносим, а выносим в отчёт.
+        if not ours / 3 <= price <= ours * 3:
+            print(f'    подозрительная цена, не переношу: предложение '
+                  f'{offer["id"]}, у нас {ours:g}, на странице {price:g}')
+            continue
+        if not DRY:
+            _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}",
+                        {'price': price})
+            if c not in (200, 204):
+                continue
+        changed += 1
+        confirmed.append(offer['id'])
+    return confirmed, changed, gone
+
+
 def sync(shop, supplier, by_name):
     prices = collect(shop)
     print(f'  цен собрано: {len(prices)}')
@@ -459,7 +551,7 @@ def sync(shop, supplier, by_name):
         return
 
     mine, code = fetch_all(f'/rest/v1/offers'
-                           f'?select=id,product_id,price,product_url'
+                           f'?select=id,product_id,price,in_stock,product_url'
                            f'&supplier_id=eq.{supplier}&order=id')
     if code != 200 or mine is None:
         print(f'::error::{shop["title"]}: предложения не прочитались, HTTP {code}')
@@ -498,9 +590,40 @@ def sync(shop, supplier, by_name):
         updated += 1
         checked.append(offer['id'])
 
+    # Что не нашлось в списках разделов — сверяем по странице товара.
+    seen = set(checked)
+    missing = [o for o in mine
+               if o['id'] not in seen and o.get('product_url')]
+    by_page, repriced, gone = recheck_by_page(shop, missing)
+    checked += by_page
+
+    # Товара у магазина больше нет: снимаем наличие и убираем ссылку на
+    # удалённую страницу. Предложение не удаляем — к нему привязаны
+    # избранное и история цен, и товар может вернуться: тогда обход
+    # разделов найдёт его и вернёт и наличие, и ссылку.
+    #
+    # Предохранитель: если «ушло» больше 40% всех предложений магазина,
+    # это почти наверняка не товары пропали, а сайт сменил адреса. Снять
+    # наличие с половины каталога по такой причине — хуже, чем не снять.
+    removed = 0
+    if gone and len(gone) > len(mine) * 0.4:
+        print(f'::warning::{shop["title"]}: страницы {len(gone)} товаров из '
+              f'{len(mine)} отдают 404 — похоже, сайт сменил адреса. '
+              f'Наличие не снимаю, нужна проверка руками.')
+    else:
+        for offer in gone:
+            if not DRY:
+                _, c = rest('PATCH', f"/rest/v1/offers?id=eq.{offer['id']}",
+                            {'in_stock': False, 'product_url': None})
+                if c not in (200, 204):
+                    continue
+            removed += 1
+
     stamped = stamp_checked(checked)
     print(f'  {shop["title"]}: обновлено {updated} | без изменений {same} | '
           f'нет предложения {unmatched} | сбоев {failed} | '
+          f'по странице товара: подтверждено {len(by_page) - repriced}, '
+          f'цена изменилась {repriced}, товар снят с сайта {removed} | '
           f'отмечено сверенными {stamped}')
 
 
