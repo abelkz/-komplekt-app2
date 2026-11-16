@@ -229,8 +229,14 @@ KASPI_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
             'Chrome/131.0.0.0 Safari/537.36')
 
 
+# Сколько самых дешёвых продавцов площадки обязаны быть в карточке.
+KASPI_TOP = 3
+KASPI_ABOUT = (KASPI_MARK + '. Цена и наличие — на стороне площадки, '
+               'ссылка ведёт на страницу товара.')
+
+
 def kaspi_sellers(kaspi_id):
-    """Продавцы одного товара: {номер продавца: цена}.
+    """ВСЕ продавцы одного товара: {номер продавца: (цена, имя)}.
 
     Ключ — номер, а не имя. Имя для сопоставления не годится: «Мир
     Керамики» есть и у нас как партнёр, и на Kaspi как продавец, а
@@ -238,36 +244,104 @@ def kaspi_sellers(kaspi_id):
     и задача решила, что товар сняли с продажи у 50 позиций сразу.
     Номер продавца лежит в offers.supplier_sku с заливки.
 
+    Именно все, а не первая страница. Раньше запрос брал восемь первых,
+    и продавец, оказавшийся девятым по цене, считался ушедшим — с него
+    снималось наличие, хотя товар он продавал.
+
     None — запрос не удался.
     """
-    body = json.dumps({'cityId': KASPI_CITY, 'id': kaspi_id,
-                       'merchantUID': '', 'limit': 8, 'page': 0,
-                       'sort': True, 'installationId': '-1'})
-    out = curl(['curl', '-s', '--max-time', '45', '-A', KASPI_UA,
-                '-X', 'POST', '-H', 'Content-Type: application/json',
-                '-H', 'Accept: application/json, text/*',
-                '-H', f'X-KS-City: {KASPI_CITY}',
-                '-H', f'Referer: https://kaspi.kz/shop/p/x-{kaspi_id}/',
-                '-b', f'kaspi.storefront.cookie.city={KASPI_CITY}',
-                '-d', body,
-                f'https://kaspi.kz/yml/offer-view/offers/{kaspi_id}'])
-    if out is None:
-        return None
-    try:
-        rows = json.loads(out.stdout.decode('utf-8', 'replace'))
-    except Exception:
-        return None
-    found = {}
-    for o in (rows.get('offers') or []):
-        mid = str(o.get('merchantId') or '').strip()
-        price = o.get('price')
-        if mid and price:
-            found[mid] = min(float(price), found.get(mid, float('inf')))
+    found, page = {}, 0
+    while page < 10:
+        body = json.dumps({'cityId': KASPI_CITY, 'id': kaspi_id,
+                           'merchantUID': '', 'limit': 64, 'page': page,
+                           'sort': True, 'installationId': '-1'})
+        out = curl(['curl', '-s', '--max-time', '45', '-A', KASPI_UA,
+                    '-X', 'POST', '-H', 'Content-Type: application/json',
+                    '-H', 'Accept: application/json, text/*',
+                    '-H', f'X-KS-City: {KASPI_CITY}',
+                    '-H', f'Referer: https://kaspi.kz/shop/p/x-{kaspi_id}/',
+                    '-b', f'kaspi.storefront.cookie.city={KASPI_CITY}',
+                    '-d', body,
+                    f'https://kaspi.kz/yml/offer-view/offers/{kaspi_id}'])
+        if out is None:
+            return None
+        try:
+            rows = json.loads(out.stdout.decode('utf-8', 'replace'))
+        except Exception:
+            return None
+        batch = rows.get('offers') or []
+        for o in batch:
+            mid = str(o.get('merchantId') or '').strip()
+            price = o.get('price')
+            if not mid or not price:
+                continue
+            price = float(price)
+            if mid not in found or price < found[mid][0]:
+                found[mid] = (price, str(o.get('merchantName') or '').strip())
+        total = rows.get('total') or 0
+        if not batch or len(found) >= total:
+            break
+        page += 1
+        time.sleep(PAUSE)
     return found
 
 
+def kaspi_websites(mine, marked):
+    """Адрес «Сайт» у продавцов Kaspi — для версии приложения из стора.
+
+    Версия 1.0.1 из App Store не знает ссылку на товар (offers.product_url):
+    у неё есть только кнопка «Сайт», и ведёт она на suppliers.website. А
+    сайт у продавца один на все товары — его профиль на Kaspi. Владелец
+    приложения увидел это так: «нажимаю на продавца — открывается его
+    профиль, а не товар» (16.11.2026).
+
+    Где у продавца в каталоге ровно одно предложение, «сайт» может быть
+    страницей этого товара — тогда старая версия ведёт куда надо. Где
+    предложений несколько, единого адреса нет: остаётся профиль. Это
+    чинит только версия 1.0.2 — в ней своя кнопка «Открыть товар».
+
+    Пересчитывается при каждой синхронизации: добавилось продавцу второе
+    предложение — адрес возвращается к профилю, иначе он вёл бы на чужой
+    для второй карточки товар.
+    """
+    offers, code = fetch_all('/rest/v1/offers?select=supplier_id,'
+                             'supplier_sku,product_url&order=id')
+    if code != 200 or offers is None:
+        print(f'::warning::Kaspi: адреса продавцов не пересчитаны, HTTP {code}')
+        return
+    by_sup = {}
+    for o in offers:
+        if o['supplier_id'] in marked:
+            by_sup.setdefault(o['supplier_id'], []).append(o)
+    sites = {s['id']: s.get('website') for s in mine}
+    to_product = to_profile = 0
+    for sid, rows in by_sup.items():
+        mid = next((str(r['supplier_sku']).strip() for r in rows
+                    if r.get('supplier_sku')), None)
+        if len(rows) == 1 and rows[0].get('product_url'):
+            target = rows[0]['product_url']
+        elif mid:
+            target = f'https://kaspi.kz/shop/info/merchant/{mid}/address-tab/'
+        else:
+            continue
+        if sites.get(sid) == target:
+            continue
+        if not DRY:
+            _, c = rest('PATCH', f'/rest/v1/suppliers?id=eq.{sid}',
+                        {'website': target})
+            if c not in (200, 204):
+                continue
+        if '/shop/p/' in target:
+            to_product += 1
+        else:
+            to_profile += 1
+    print(f'  Kaspi: «Сайт» ведёт на товар — переключено {to_product}, '
+          f'обратно на профиль продавца — {to_profile}')
+
+
 def sync_kaspi():
-    mine, code = fetch_all('/rest/v1/suppliers?select=id,name,about&order=id')
+    mine, code = fetch_all('/rest/v1/suppliers'
+                           '?select=id,name,about,website&order=id')
     if code != 200 or mine is None:
         print(f'::error::Kaspi: поставщики не прочитались, HTTP {code}')
         return
@@ -275,28 +349,34 @@ def sync_kaspi():
     if not marked:
         print('Kaspi: ни одного поставщика с пометкой площадки — пропуск.')
         return
+    # Имена поставщиков БЕЗ пометки площадки. С ними новому продавцу
+    # совпадать нельзя: объявление Kaspi под именем партнёра — это его
+    # репутация, отданная чужим ценам (см. историю с «Миром Керамики»).
+    partners = {(s.get('name') or '').strip().lower()
+                for s in mine if s['id'] not in marked}
+    # Номер продавца → наш поставщик. Сначала по адресу его страницы на
+    # площадке, ниже дополняется по номерам из предложений.
+    by_merchant = {}
+    for s in mine:
+        if s['id'] in marked:
+            m = re.search(r'/merchant/(\d+)/', s.get('website') or '')
+            if m:
+                by_merchant[m.group(1)] = s['id']
 
-    # Ищем по attrs->>kaspi_id, а не по source: products_source_check
-    # (0040) знает только supplier/admin/import, а id товара на Kaspi
-    # всё равно нужен для запроса и однозначен сам по себе.
-    cards, code = fetch_all('/rest/v1/products?select=id,attrs'
-                            '&attrs->>kaspi_id=not.is.null&order=id')
+    cards, code = fetch_all('/rest/v1/products?select=id,kaspi_id'
+                            '&kaspi_id=not.is.null&order=id')
     if code != 200 or cards is None:
         print(f'::error::Kaspi: карточки не прочитались, HTTP {code}')
         return
-    targets = {}
-    for p in cards:
-        kid = (p.get('attrs') or {}).get('kaspi_id')
-        if kid:
-            targets[p['id']] = str(kid)
+    targets = {p['id']: str(p['kaspi_id']) for p in cards if p.get('kaspi_id')}
     print(f'  карточек Kaspi: {len(targets)} | поставщиков площадки: '
           f'{len(marked)}')
     if not targets:
         return
 
     offers, code = fetch_all('/rest/v1/offers?select=id,product_id,'
-                             'supplier_id,price,in_stock,supplier_sku'
-                             '&order=id')
+                             'supplier_id,price,in_stock,supplier_sku,'
+                             'product_url&order=id')
     if code != 200 or offers is None:
         print(f'::error::Kaspi: предложения не прочитались, HTTP {code}')
         return
@@ -304,13 +384,16 @@ def sync_kaspi():
     # номера пропускаем: сопоставить их с ответом Kaspi нечем, а
     # угадывать по имени — та самая ошибка, из-за которой 50 позиций
     # разом «снялись с продажи».
-    existing = {}
+    existing, card_url = {}, {}
     for o in offers:
         if o['supplier_id'] in marked and o.get('supplier_sku'):
-            existing.setdefault(o['product_id'], {})[
-                str(o['supplier_sku']).strip()] = o
+            mid = str(o['supplier_sku']).strip()
+            existing.setdefault(o['product_id'], {})[mid] = o
+            by_merchant.setdefault(mid, o['supplier_id'])
+            if o.get('product_url'):
+                card_url[o['product_id']] = o['product_url']
 
-    updated = same = gone = strangers = failed = 0
+    updated = same = gone = failed = added = new_sellers = wrong_best = 0
     checked = []    # предложения, чью цену площадка сегодня подтвердила
     for pid, kid in targets.items():
         found = kaspi_sellers(kid)
@@ -319,10 +402,9 @@ def sync_kaspi():
             failed += 1
             continue
         ours = existing.get(pid, {})
-        for mid, price in found.items():
+        for mid, (price, _) in found.items():
             offer = ours.get(mid)
             if offer is None:
-                strangers += 1          # новый продавец — только в отчёт
                 continue
             if (abs(float(offer['price']) - price) < 0.005
                     and offer['in_stock']):
@@ -337,6 +419,54 @@ def sync_kaspi():
                     continue
             updated += 1
             checked.append(offer['id'])
+
+        # Самые дешёвые продавцы обязаны быть в карточке.
+        #
+        # При заливке на товар брали двух-трёх продавцов, и задача только
+        # обновляла их цены. Но продавцы на площадке меняются: появляются
+        # новые и дешевле. Карточка продолжала называть «лучшей ценой»
+        # 39 193 ₸, когда на Kaspi тот же товар стоил 37 150 ₸ у двух
+        # продавцов, которых у нас не было. Заметил владелец приложения,
+        # открыв карточку рядом с площадкой (15.11.2026). Сравнение цен,
+        # которое не показывает самую низкую, — хуже, чем его отсутствие.
+        best = sorted(found.items(), key=lambda kv: kv[1][0])[:KASPI_TOP]
+        if ours and best and best[0][0] not in ours:
+            wrong_best += 1
+        url = card_url.get(pid)
+        for mid, (price, name) in best:
+            if mid in ours or not url or not name:
+                continue
+            sid = by_merchant.get(mid)
+            if sid is None:
+                # Имя партнёра занимать нельзя — см. partners выше.
+                title = name + ' на Kaspi' if name.lower() in partners else name
+                if DRY:
+                    sid = -1
+                else:
+                    row, c = rest('POST', '/rest/v1/suppliers', [{
+                        'name': title, 'city': 'Астана', 'status': 'active',
+                        'verified': False, 'about': KASPI_ABOUT,
+                        'website': 'https://kaspi.kz/shop/info/merchant/'
+                                   f'{mid}/address-tab/',
+                    }], prefer='return=representation')
+                    if c not in (200, 201) or not row:
+                        failed += 1
+                        continue
+                    sid = row[0]['id']
+                by_merchant[mid] = sid
+                new_sellers += 1
+            if not DRY:
+                row, c = rest('POST', '/rest/v1/offers', [{
+                    'product_id': pid, 'supplier_id': sid, 'price': price,
+                    'in_stock': True, 'product_url': url,
+                    'supplier_sku': mid,
+                }], prefer='return=representation')
+                if c not in (200, 201) or not row:
+                    failed += 1
+                    continue
+                ours[mid] = row[0]
+            added += 1
+
         # Продавец больше не показывает товар: цену не трогаем, снимаем
         # наличие. Удалять нельзя — завтра он может вернуться, а история
         # цен и избранное привязаны к предложению.
@@ -350,15 +480,19 @@ def sync_kaspi():
 
     stamped = stamp_checked(checked)
     print(f'  Kaspi: обновлено {updated} | без изменений {same} | '
-          f'снято с наличия {gone} | новых продавцов {strangers} | '
-          f'сбоев {failed} | отмечено сверенными {stamped}')
-    if strangers:
-        print(f'::notice::Kaspi: на товарах появилось {strangers} '
-              f'предложений от продавцов, которых у нас нет. Новых '
-              f'поставщиков задача не заводит — это делается при заливке.')
+          f'снято с наличия {gone} | сбоев {failed} | '
+          f'отмечено сверенными {stamped}')
+    print(f'  Kaspi: самого дешёвого продавца не было в {wrong_best} '
+          f'карточках | добавлено предложений {added} | '
+          f'из них от новых продавцов-поставщиков {new_sellers}')
 
+    # Новые продавцы только что заведены — перечитываем список.
+    fresh, code = fetch_all('/rest/v1/suppliers'
+                            '?select=id,name,about,website&order=id')
+    if code == 200 and fresh is not None:
+        kaspi_websites(fresh, {s['id'] for s in fresh
+                               if KASPI_MARK in (s.get('about') or '')})
 
-# ─────────────────────────── вспомогательное ───────────────────────────
 
 def curl(args, timeout=90):
     try:
@@ -368,10 +502,12 @@ def curl(args, timeout=90):
         return None
 
 
-def rest(method, path, body=None):
+def rest(method, path, body=None, prefer=None):
     """Ключ: в CI — из секрета, в сессии разработчика — от прокси."""
     args = ['curl', '-s', '-X', method, '-w', '\n%{http_code}',
             '--max-time', '60', '-H', 'Content-Type: application/json']
+    if prefer:
+        args += ['-H', f'Prefer: {prefer}']
     key = os.environ.get('SUPABASE_KEY')
     if key:
         args += ['-H', f'apikey: {key}', '-H', f'Authorization: Bearer {key}']
