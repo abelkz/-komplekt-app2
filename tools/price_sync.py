@@ -286,6 +286,59 @@ def kaspi_sellers(kaspi_id):
     return found
 
 
+def kaspi_websites(mine, marked):
+    """Адрес «Сайт» у продавцов Kaspi — для версии приложения из стора.
+
+    Версия 1.0.1 из App Store не знает ссылку на товар (offers.product_url):
+    у неё есть только кнопка «Сайт», и ведёт она на suppliers.website. А
+    сайт у продавца один на все товары — его профиль на Kaspi. Владелец
+    приложения увидел это так: «нажимаю на продавца — открывается его
+    профиль, а не товар» (16.11.2026).
+
+    Где у продавца в каталоге ровно одно предложение, «сайт» может быть
+    страницей этого товара — тогда старая версия ведёт куда надо. Где
+    предложений несколько, единого адреса нет: остаётся профиль. Это
+    чинит только версия 1.0.2 — в ней своя кнопка «Открыть товар».
+
+    Пересчитывается при каждой синхронизации: добавилось продавцу второе
+    предложение — адрес возвращается к профилю, иначе он вёл бы на чужой
+    для второй карточки товар.
+    """
+    offers, code = fetch_all('/rest/v1/offers?select=supplier_id,'
+                             'supplier_sku,product_url&order=id')
+    if code != 200 or offers is None:
+        print(f'::warning::Kaspi: адреса продавцов не пересчитаны, HTTP {code}')
+        return
+    by_sup = {}
+    for o in offers:
+        if o['supplier_id'] in marked:
+            by_sup.setdefault(o['supplier_id'], []).append(o)
+    sites = {s['id']: s.get('website') for s in mine}
+    to_product = to_profile = 0
+    for sid, rows in by_sup.items():
+        mid = next((str(r['supplier_sku']).strip() for r in rows
+                    if r.get('supplier_sku')), None)
+        if len(rows) == 1 and rows[0].get('product_url'):
+            target = rows[0]['product_url']
+        elif mid:
+            target = f'https://kaspi.kz/shop/info/merchant/{mid}/address-tab/'
+        else:
+            continue
+        if sites.get(sid) == target:
+            continue
+        if not DRY:
+            _, c = rest('PATCH', f'/rest/v1/suppliers?id=eq.{sid}',
+                        {'website': target})
+            if c not in (200, 204):
+                continue
+        if '/shop/p/' in target:
+            to_product += 1
+        else:
+            to_profile += 1
+    print(f'  Kaspi: «Сайт» ведёт на товар — переключено {to_product}, '
+          f'обратно на профиль продавца — {to_profile}')
+
+
 def sync_kaspi():
     mine, code = fetch_all('/rest/v1/suppliers'
                            '?select=id,name,about,website&order=id')
@@ -432,6 +485,13 @@ def sync_kaspi():
     print(f'  Kaspi: самого дешёвого продавца не было в {wrong_best} '
           f'карточках | добавлено предложений {added} | '
           f'из них от новых продавцов-поставщиков {new_sellers}')
+
+    # Новые продавцы только что заведены — перечитываем список.
+    fresh, code = fetch_all('/rest/v1/suppliers'
+                            '?select=id,name,about,website&order=id')
+    if code == 200 and fresh is not None:
+        kaspi_websites(fresh, {s['id'] for s in fresh
+                               if KASPI_MARK in (s.get('about') or '')})
 
 
 def curl(args, timeout=90):
